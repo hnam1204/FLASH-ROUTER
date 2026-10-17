@@ -1,0 +1,280 @@
+@using FlashAI.Modules.Subscriptions.Contracts
+@inject ISubscriptionUiPort SubscriptionPort
+
+<div class="subscription-tab-container">
+    @if (_loading)
+    {
+        <div class="sub-loading">Đang tải thông tin gói...</div>
+    }
+    else if (_obs != null)
+    {
+        @if (ProviderObservations.Count > 0)
+        {
+            <section class="provider-observation-section" aria-labelledby="provider-observation-title">
+                <div class="provider-observation-heading">
+                    <div>
+                        <p class="provider-observation-eyebrow">VERIFIED PROVIDER DATA</p>
+                        <h3 id="provider-observation-title">Quan sát usage và credits</h3>
+                    </div>
+                    <span class="provider-observation-note">Không tự suy luận dữ liệu thiếu</span>
+                </div>
+                <div class="provider-observation-grid">
+                    @foreach (var observation in ProviderObservations)
+                    {
+                        <article class="provider-observation-card">
+                            <div class="provider-observation-card-top">
+                                <div>
+                                    <strong>@observation.ProviderDisplayName</strong>
+                                    <span>@FormatMetric(observation.MetricName)</span>
+                                </div>
+                                <span class="observation-status @GetObservationStatusClass(observation)">@GetObservationStatusLabel(observation)</span>
+                            </div>
+                            <div class="provider-observation-value">
+                                @if (observation.MetricName == "provider_check")
+                                {
+                                    <span class="observation-unknown">Chưa có giá trị metric</span>
+                                }
+                                else
+                                {
+                                    <strong>@observation.Value</strong>
+                                    <span>@observation.Unit@(string.IsNullOrWhiteSpace(observation.Currency) ? string.Empty : $" · {observation.Currency}")</span>
+                                }
+                            </div>
+                            <div class="provider-observation-meta">
+                                <span>Scope: @observation.Scope</span>
+                                <span>Nguồn: @FormatSource(observation.Source)</span>
+                                <span>Cập nhật: @observation.ObservedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(observation.LastCheckStatus) && observation.MetricName != "provider_check")
+                            {
+                                <div class="provider-observation-check">Kiểm tra: @FormatCheckStatus(observation.LastCheckStatus)</div>
+                            }
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+        else
+        {
+            <div class="provider-observation-empty">
+                <strong>Chưa có dữ liệu usage hoặc quota đã xác minh</strong>
+                <span>Chỉ hiển thị quan sát từ provider khi có bản ghi chính thức hoặc metadata cục bộ rõ nguồn.</span>
+            </div>
+        }
+
+        <div class="sub-summary-card">
+            <div class="sub-card-top">
+                <div class="plan-hero">
+                    <span class="plan-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                    </span>
+                    <div>
+                        <div class="plan-title-row">
+                            <h3 class="plan-title">Gói ghi nhận: <strong>@_obs.Plan</strong></h3>
+                            <span class="sub-source-badge">@_obs.Provenance</span>
+                        </div>
+                        <p class="plan-sub">Theo dõi chu kỳ gia hạn và lịch sử quan sát</p>
+                    </div>
+                </div>
+
+                <button type="button" class="btn-edit-sub" @onclick="ToggleEditor">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                    </svg>
+                    <span>Cập nhật thông tin gói</span>
+                </button>
+            </div>
+
+            <div class="sub-kpi-row">
+                <div class="kpi-cell">
+                    <span class="kpi-label">Theo dõi đến hạn</span>
+                    <span class="kpi-val highlight">@(_obs.ExpiryTrackingDate?.ToString("dd/MM/yyyy") ?? "Không thời hạn")</span>
+                </div>
+                <div class="kpi-cell">
+                    <span class="kpi-label">Lần ghi nhận</span>
+                    <span class="kpi-val">@_obs.ObservedAt.ToString("dd/MM/yyyy HH:mm")</span>
+                </div>
+                <div class="kpi-cell">
+                    <span class="kpi-label">Xác minh chính thức</span>
+                    <span class="kpi-val">@(_obs.VerifiedAt?.ToString("dd/MM/yyyy HH:mm") ?? "Chưa xác minh tự động")</span>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_obs.Notes))
+            {
+                <div class="sub-notes-box">
+                    <strong>Ghi chú gói:</strong> @_obs.Notes
+                </div>
+            }
+
+            @if (_showEditor)
+            {
+                <div class="sub-inline-editor">
+                    <h4 class="editor-heading">Cập nhật quan sát gói sử dụng</h4>
+                    <div class="editor-grid">
+                        <div class="editor-field">
+                            <label>Gói sử dụng</label>
+                            <select class="editor-select" @bind="_editPlan">
+                                <option value="Plus">ChatGPT Plus</option>
+                                <option value="Free">Free</option>
+                                <option value="Pro">Pro / Team</option>
+                                <option value="Chưa rõ">Chưa rõ</option>
+                            </select>
+                        </div>
+                        <div class="editor-field">
+                            <label>Hạn theo dõi (dd/MM/yyyy)</label>
+                            <input type="date" class="editor-input" @bind="_editExpiry" />
+                        </div>
+                        <div class="editor-field full-width">
+                            <label>Ghi chú quan sát</label>
+                            <input type="text" class="editor-input" placeholder="Ví dụ: Đã thanh toán tháng này..." @bind="_editNotes" />
+                        </div>
+                    </div>
+                    <div class="editor-actions">
+                        <button type="button" class="btn-sub-cancel" @onclick="ToggleEditor">Hủy</button>
+                        <button type="button" class="btn-sub-save" @onclick="SaveObservation">Lưu quan sát</button>
+                    </div>
+                </div>
+            }
+
+            <div class="history-section">
+                <h4 class="history-title">Lịch sử quan sát</h4>
+                <div class="history-timeline">
+                    @foreach (var h in _obs.History)
+                    {
+                        <div class="history-item">
+                            <div class="timeline-dot"></div>
+                            <div class="history-content">
+                                <div class="history-header-row">
+                                    <span class="history-plan">Gói @h.Plan</span>
+                                    <span class="history-date">@h.RecordedAt.ToString("dd/MM/yyyy HH:mm")</span>
+                                </div>
+                                <span class="history-source">Nguồn: @h.Source</span>
+                                @if (!string.IsNullOrEmpty(h.Notes))
+                                {
+                                    <p class="history-notes">@h.Notes</p>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    [Parameter] public IReadOnlyList<ProviderObservationCardVm> ProviderObservations { get; set; } = [];
+    [Parameter] public EventCallback<string> OnNotify { get; set; }
+
+    private SubscriptionObservationVm? _obs;
+    private bool _loading = true;
+    private bool _showEditor = false;
+
+    private string _editPlan = "Plus";
+    private DateTime? _editExpiry = DateTime.Now.AddMonths(1);
+    private string _editNotes = string.Empty;
+    private CancellationTokenSource? _loadCts;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = new CancellationTokenSource();
+        var cancellationToken = _loadCts.Token;
+        _loading = true;
+        try
+        {
+            _obs = await SubscriptionPort.GetSubscriptionAsync(AccountId, cancellationToken);
+            if (_obs != null)
+            {
+                _editPlan = _obs.Plan;
+                _editExpiry = _obs.ExpiryTrackingDate?.DateTime;
+                _editNotes = _obs.Notes ?? string.Empty;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private void ToggleEditor()
+    {
+        _showEditor = !_showEditor;
+    }
+
+    private async Task SaveObservation()
+    {
+        DateTimeOffset? expiryDto = _editExpiry.HasValue
+            ? new DateTimeOffset(_editExpiry.Value, TimeSpan.FromHours(7))
+            : null;
+
+        var res = await SubscriptionPort.RecordManualObservationAsync(AccountId, _editPlan, expiryDto, _editNotes);
+        if (res.IsSuccess)
+        {
+            _obs = await SubscriptionPort.GetSubscriptionAsync(AccountId);
+            _showEditor = false;
+            await OnNotify.InvokeAsync("Đã cập nhật gói quan sát thành công.");
+        }
+    }
+
+    private static string FormatMetric(string metric)
+        => metric.Replace('_', ' ');
+
+    private static string FormatSource(string source)
+        => source switch
+        {
+            "OfficialApi" => "Official API",
+            "CalculatedFromOfficialObservations" => "Calculated from official data",
+            "UserProvided" => "Người dùng cung cấp",
+            _ => "Metadata cục bộ"
+        };
+
+    private static string FormatCheckStatus(string? status)
+        => status switch
+        {
+            "Forbidden" => "Cần quyền bổ sung",
+            "RateLimited" => "Bị giới hạn tốc độ",
+            "Unsupported" => "Provider chưa hỗ trợ",
+            "Success" => "Đã kiểm tra",
+            _ => status ?? "Chưa kiểm tra"
+        };
+
+    private static string GetObservationStatusLabel(ProviderObservationCardVm observation)
+        => observation.IsStale || observation.ObservationStatus == "Stale"
+            ? "Stale"
+            : observation.ObservationStatus switch
+            {
+                "Confirmed" => "Confirmed",
+                "UserProvided" => "User provided",
+                "Unsupported" => "Unsupported",
+                "Error" => "Error",
+                "Unavailable" => "Unavailable",
+                "RequiresPermission" => "Requires permission",
+                "RateLimited" => "Rate limited",
+                _ => "Unknown"
+            };
+
+    private static string GetObservationStatusClass(ProviderObservationCardVm observation)
+        => observation.IsStale || observation.ObservationStatus == "Stale"
+            ? "observation-stale"
+            : observation.ObservationStatus switch
+            {
+                "Confirmed" => "observation-confirmed",
+                "Unsupported" or "Unavailable" or "RequiresPermission" => "observation-muted",
+                "Error" or "RateLimited" => "observation-error",
+                _ => "observation-muted"
+            };
+}

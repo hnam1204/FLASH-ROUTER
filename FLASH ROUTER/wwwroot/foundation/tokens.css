@@ -1,0 +1,222 @@
+/* ==========================================================================
+   FLASH ROUTER — MASTER DESIGN SYSTEM TOKENS
+   Master design system tokens for Dark Mode and Light Mode.
+   Conforms to Master UI Specification & CONSOLE-04 regression tests.
+   ========================================================================== */
+
+:root,
+[data-theme="dark"],
+[data-theme-active="dark"] {
+    /* Legacy test-compatible tokens */
+    --app-bg: #081320;
+    --app-surface: #101E30;
+    --app-elevated: #14263A;
+    --app-input: #0D1D30;
+    --app-console: #07121E;
+    --app-border: #25364A;
+    --text-primary: #E7EEF8;
+    --text-muted: #95A9C3;
+    --accent-primary: #2681FF;
+    --accent-teal: #16C5AB;
+    --state-success: #2DDD9B;
+    --state-warning: #F5B94E;
+    --state-error: #F97785;
+
+    /* Phase 3 Deep Dark Mode Master Tokens */
+    --app-bg: #0D1420;
+    --app-surface: #151E2C;
+    --app-surface-secondary: #1A2535;
+    --app-elevated: #202D3E;
+    --app-input: #121A27;
+    --app-console: #0D1420;
+    --app-border: #2B3A4E;
+    --app-border-subtle: #1E2B3C;
+    --app-border-strong: #3B4E68;
+
+    /* Typography & Ink */
+    --text-primary: #EDF3FA;
+    --text-secondary: #B3C0D1;
+    --text-muted: #8B9BB1;
+    --text-subtle: #6D7F96;
+    --text-disabled: #47586E;
+
+    /* Accents */
+    --accent-primary: #35C5DB;
+    --accent-primary-hover: #26B2C8;
+    --accent-primary-glow: rgba(53, 197, 219, 0.25);
+    --accent-teal: #35C5DB;
+    --accent-teal-hover: #26B2C8;
+    --accent-teal-glow: rgba(53, 197, 219, 0.2);
+    --accent-cyan: #35C5DB;
+    --hover: #223246;
+    --selected-row: #173B48;
+
+    /* Semantic Status Badges & States */
+    --state-success: #2DDD9B;
+    --state-success-bg: rgba(45, 221, 155, 0.14);
+    --state-warning: #F5B94E;
+    --state-warning-bg: rgba(245, 185, 78, 0.14);
+    --state-error: #F97785;
+    --state-error-bg: rgba(249, 119, 133, 0.14);
+    --state-info: #38BDF8;
+    --state-info-bg: rgba(56, 189, 248, 0.14);
+
+    /* Shadows & Overlays */
+    --focus-ring: rgba(53, 197, 219, 0.45);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.65);
+    --flash-overlay-backdrop: rgba(7, 12, 19, 0.75);
+
+    /* Backwards compatibility aliases */
+    --flash-primary: var(--accent-primary);
+    --flash-primary-hover: var(--accent-primary-hover);
+    --flash-canvas: var(--app-bg);
+    --flash-surface: var(--app-surface);
+    --flash-surface-muted: var(--app-elevated);
+    --flash-surface-hover: var(--hover);
+    --flash-text-primary: var(--text-primary);
+    --flash-text-secondary: var(--text-secondary);
+    --flash-text-muted: var(--text-muted);
+    --flash-border: var(--app-border);
+    --flash-border-subtle: var(--app-border-subtle);
+    --flash-success: var(--state-success);
+    --flash-warning: var(--state-warning);
+    --flash-danger: var(--state-error);
+    --flash-info: var(--state-info);
+    --flash-focus-ring: var(--focus-ring);
+    --flash-shadow-modal: var(--shadow-lg);
+}
+
+[data-theme="light"],
+:root[data-theme="light"],
+[data-theme-active="light"] {
+    /* Legacy test-compatible tokens */
+    --app-bg: #EFF3F9;
+    --app-surface: #FFFFFF;
+    --app-elevated: #F5F8FC;
+    --app-input: #FFFFFF;
+    --app-console: #102033;
+    --app-border: #D5DEEB;
+    --text-primary: #192B40;
+    --text-muted: #5A6F88;
+    --accent-primary: #176CE3;
+    --accent-teal: #078F7E;
+
+    /* Phase 3 Light Mode Master Tokens */
+    --app-bg: #F6F8FB;
+    --app-surface: #FFFFFF;
+    --app-surface-secondary: #F9FAFC;
+    --app-elevated: #FFFFFF;
+    --app-input: #FFFFFF;
+    --app-console: #FFFFFF;
+    --app-border: #E5EAF1;
+    --app-border-subtle: #EEF2F6;
+    --app-border-strong: #D5DDE7;
+
+    /* Typography & Ink */
+    --text-primary: #101828;
+    --text-secondary: #526079;
+    --text-muted: #7D8AA2;
+    --text-subtle: #98A5B9;
+    --text-disabled: #CBD5E1;
+
+    /* Accents */
+    --accent-primary: #079DB4;
+    --accent-primary-hover: #068498;
+    --accent-primary-glow: rgba(7, 157, 180, 0.2);
+    --accent-teal: #079DB4;
+    --accent-teal-hover: #068498;
+    --accent-teal-glow: rgba(7, 157, 180, 0.16);
+    --accent-cyan: #079DB4;
+    --hover: #F2F7FA;
+    --selected-row: #EAF8FB;
+
+    /* Semantic Status Badges & States */
+    --state-success: #059669;
+    --state-success-bg: #E6F8F1;
+    --state-warning: #D97706;
+    --state-warning-bg: #FEF3C7;
+    --state-error: #DC2626;
+    --state-error-bg: #FEE2E2;
+    --state-info: #0284C7;
+    --state-info-bg: #E0F2FE;
+
+    /* Shadows & Overlays */
+    --focus-ring: rgba(7, 157, 180, 0.35);
+    --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.05), 0 1px 2px rgba(16, 24, 40, 0.03);
+    --shadow-md: 0 4px 14px rgba(16, 24, 40, 0.06), 0 2px 6px rgba(16, 24, 40, 0.04);
+    --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.1);
+    --flash-overlay-backdrop: rgba(16, 24, 40, 0.45);
+
+    /* Backwards compatibility aliases */
+    --flash-primary: var(--accent-primary);
+    --flash-primary-hover: var(--accent-primary-hover);
+    --flash-canvas: var(--app-bg);
+    --flash-surface: var(--app-surface);
+    --flash-surface-muted: var(--app-surface-secondary);
+    --flash-surface-hover: var(--hover);
+    --flash-text-primary: var(--text-primary);
+    --flash-text-secondary: var(--text-secondary);
+    --flash-text-muted: var(--text-muted);
+    --flash-border: var(--app-border);
+    --flash-border-subtle: var(--app-border-subtle);
+    --flash-success: var(--state-success);
+    --flash-warning: var(--state-warning);
+    --flash-danger: var(--state-error);
+    --flash-info: var(--state-info);
+    --flash-focus-ring: var(--focus-ring);
+    --flash-shadow-modal: var(--shadow-lg);
+}
+
+:root {
+    /* Layout Tokens */
+    --sidebar-width: 224px;
+    --sidebar-collapsed-width: 68px;
+    --inspector-width: 360px;
+    --topbar-height: 64px;
+    --content-max-width: 1920px;
+
+    /* Spacing Primitives */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+
+    /* Radius Primitives */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+    --radius-pill: 9999px;
+
+    /* Typography Scale */
+    --font-xs: 12px;
+    --font-sm: 13px;
+    --font-base: 14px;
+    --font-md: 15px;
+    --font-lg: 18px;
+    --font-xl: 20px;
+    --font-heading: 26px;
+
+    /* Transitions */
+    --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Compatibility aliases */
+    --flash-radius-sm: var(--radius-sm);
+    --flash-radius: var(--radius-md);
+    --flash-radius-md: var(--radius-md);
+    --flash-radius-lg: var(--radius-lg);
+    --flash-radius-pill: var(--radius-pill);
+    --flash-shadow-sm: var(--shadow-sm);
+    --flash-shadow: var(--shadow-md);
+    --flash-shadow-lg: var(--shadow-lg);
+    --flash-transition-fast: var(--transition-fast);
+    --flash-transition-normal: var(--transition-normal);
+}

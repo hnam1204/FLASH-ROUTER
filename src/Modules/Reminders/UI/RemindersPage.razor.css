@@ -1,0 +1,115 @@
+.reminders-page {
+    display: grid;
+    gap: 2.5rem;
+    max-width: 960px;
+    padding: clamp(1.5rem, 4vw, 4rem) 0 5rem;
+}
+
+.reminders-intro {
+    max-width: 680px;
+}
+
+.reminders-eyebrow,
+.reminders-status-label {
+    color: var(--flash-accent);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    margin: 0 0 0.9rem;
+    text-transform: uppercase;
+}
+
+.reminders-page h1 {
+    color: var(--flash-ink);
+    font-size: clamp(2.4rem, 7vw, 5.6rem);
+    letter-spacing: -0.07em;
+    line-height: 0.96;
+    margin: 0;
+    max-width: 9ch;
+}
+
+.reminders-description {
+    color: var(--flash-muted-ink);
+    font-size: 1.08rem;
+    line-height: 1.7;
+    margin: 1.5rem 0 0;
+    max-width: 60ch;
+}
+
+.reminders-status {
+    align-items: flex-start;
+    background: var(--flash-surface);
+    border: 1px solid var(--flash-line);
+    border-left: 3px solid var(--flash-accent);
+    display: flex;
+    gap: 1rem;
+    padding: 1.3rem 1.4rem;
+}
+
+.reminders-status-mark {
+    background: var(--flash-accent);
+    border-radius: 50%;
+    box-shadow: 0 0 0 6px var(--flash-accent-soft);
+    flex: 0 0 0.65rem;
+    height: 0.65rem;
+    margin-top: 0.35rem;
+    width: 0.65rem;
+}
+
+.reminders-status h2 {
+    color: var(--flash-ink);
+    font-size: 1.15rem;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+
+.reminders-status p:last-child {
+    color: var(--flash-muted-ink);
+    line-height: 1.65;
+    margin: 0.55rem 0 0;
+    max-width: 64ch;
+}
+
+.reminders-action {
+    align-items: center;
+    background: var(--flash-ink);
+    color: var(--flash-paper);
+    display: inline-flex;
+    font-size: 0.94rem;
+    font-weight: 700;
+    gap: 0.45rem;
+    justify-content: space-between;
+    max-width: 220px;
+    padding: 0.9rem 1rem;
+    text-decoration: none;
+    transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.reminders-action:hover {
+    background: var(--flash-accent-deep);
+    color: var(--flash-paper);
+    transform: translateY(-2px);
+}
+
+.reminders-action:focus-visible {
+    outline: 3px solid var(--flash-accent);
+    outline-offset: 4px;
+}
+
+@media (max-width: 640px) {
+    .reminders-page {
+        gap: 2rem;
+        padding-top: 1.5rem;
+    }
+
+    .reminders-page h1 {
+        font-size: clamp(2.8rem, 17vw, 4.5rem);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reminders-action {
+        transition: none;
+    }
+}
+

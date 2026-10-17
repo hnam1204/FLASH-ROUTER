@@ -1,0 +1,125 @@
+@using FlashAI.Modules.Settings.Contracts
+@inject ISettingsUiPort SettingsPort
+
+<div class="flash-overlay-backdrop" @onclick="HandleClose">
+    <div class="flash-modal-card settings-modal-card" @onclick:stopPropagation="true">
+        <div class="flash-modal-header">
+            <h3 class="flash-modal-title">Cài đặt hệ thống</h3>
+            <button type="button" class="flash-modal-close-btn" @onclick="HandleClose">✕</button>
+        </div>
+
+        <div class="settings-nav-bar">
+            <button type="button" class="settings-nav-item @(_activeTab == "appearance" ? "active" : "")" @onclick='() => _activeTab = "appearance"'>
+                Giao diện
+            </button>
+            <button type="button" class="settings-nav-item @(_activeTab == "privacy" ? "active" : "")" @onclick='() => _activeTab = "privacy"'>
+                Quyền riêng tư
+            </button>
+            <button type="button" class="settings-nav-item @(_activeTab == "diagnostics" ? "active" : "")" @onclick='() => _activeTab = "diagnostics"'>
+                Chẩn đoán
+            </button>
+        </div>
+
+        <div class="flash-modal-body">
+            @if (_activeTab == "appearance")
+            {
+                <div class="settings-pane">
+                    <h4 class="pane-title">Chế độ hiển thị</h4>
+                    <p class="pane-desc">Chọn phong cách giao diện sáng hoặc tối phù hợp với mắt bạn.</p>
+
+                    <div class="theme-options-grid">
+                        <label class="theme-option-card @(_settings.Theme == "light" ? "selected" : "")">
+                            <input type="radio" name="theme-choice" value="light" checked="@(_settings.Theme == "light")" @onchange='() => SetTheme("light")' />
+                            <div class="theme-preview light-preview">
+                                <div class="preview-header"></div>
+                                <div class="preview-body"></div>
+                            </div>
+                            <span class="theme-label">Giao diện Sáng (Mặc định)</span>
+                        </label>
+
+                        <label class="theme-option-card @(_settings.Theme == "dark" ? "selected" : "")">
+                            <input type="radio" name="theme-choice" value="dark" checked="@(_settings.Theme == "dark")" @onchange='() => SetTheme("dark")' />
+                            <div class="theme-preview dark-preview">
+                                <div class="preview-header"></div>
+                                <div class="preview-body"></div>
+                            </div>
+                            <span class="theme-label">Giao diện Tối (Dark mode)</span>
+                        </label>
+                    </div>
+                </div>
+            }
+            else if (_activeTab == "privacy")
+            {
+                <div class="settings-pane">
+                    <h4 class="pane-title">Bảo vệ quyền riêng tư cục bộ</h4>
+                    <p class="pane-desc">Bảo vệ thông tin tài khoản khi chia sẻ màn hình hoặc quay video.</p>
+
+                    <div class="privacy-switches-stack">
+                        <label class="switch-row">
+                            <input type="checkbox" @bind="_settings.MaskAccountEmails" @bind:after="ApplySettings" />
+                            <div>
+                                <strong class="switch-title">Che mờ địa chỉ email</strong>
+                                <p class="switch-sub">Địa chỉ email sẽ hiển thị dạng <code>ac•••01@example.com</code> trên giao diện chính.</p>
+                            </div>
+                        </label>
+
+                        <label class="switch-row">
+                            <input type="checkbox" @bind="_settings.HideSensitiveMetadata" @bind:after="ApplySettings" />
+                            <div>
+                                <strong class="switch-title">Ẩn chi tiết kỹ thuật nhạy cảm</strong>
+                                <p class="switch-sub">Giấu thông tin định danh OAuth và các tham số kỹ thuật.</p>
+                            </div>
+                        </label>
+
+                        <label class="switch-row">
+                            <input type="checkbox" @bind="_settings.HideTotpByDefault" @bind:after="ApplySettings" />
+                            <div>
+                                <strong class="switch-title">Mặc định khóa két 2FA</strong>
+                                <p class="switch-sub">Yêu cầu mở khóa két khi truy cập tab mã xác thực.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            }
+            else if (_activeTab == "diagnostics")
+            {
+                @if (DiagnosticsContent != null)
+                {
+                    @DiagnosticsContent
+                }
+            }
+        </div>
+
+        <div class="flash-modal-footer">
+            <button type="button" class="btn-dialog-primary" @onclick="HandleClose">Hoàn tất</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClosed { get; set; }
+    [Parameter] public EventCallback<UserSettingsVm> OnSettingsChanged { get; set; }
+    [Parameter] public RenderFragment? DiagnosticsContent { get; set; }
+
+    private string _activeTab = "appearance";
+    private UserSettingsVm _settings = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = await SettingsPort.GetSettingsAsync();
+    }
+
+    private async Task SetTheme(string theme)
+    {
+        _settings.Theme = theme;
+        await ApplySettings();
+    }
+
+    private async Task ApplySettings()
+    {
+        await SettingsPort.SaveSettingsAsync(_settings);
+        await OnSettingsChanged.InvokeAsync(_settings);
+    }
+
+    private async Task HandleClose() => await OnClosed.InvokeAsync();
+}

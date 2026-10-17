@@ -1,0 +1,160 @@
+@using FlashAI.Modules.Reminders.Contracts
+@inject IReminderUiPort ReminderPort
+
+<div class="reminder-tab-container">
+    <div class="reminder-header-row">
+        <div>
+            <h4 class="section-title">Danh sách nhắc nhở</h4>
+            <p class="section-sub">Theo dõi lịch gia hạn và các cột mốc kiểm tra bảo mật</p>
+        </div>
+        <button type="button" class="btn-new-reminder" @onclick="ToggleAddForm">
+            + Thêm nhắc nhở
+        </button>
+    </div>
+
+    @if (_showAddForm)
+    {
+        <div class="reminder-add-card">
+            <h5 class="add-title">Tạo nhắc nhở mới</h5>
+            <div class="add-grid">
+                <div class="add-field main-col">
+                    <label>Nội dung nhắc nhở</label>
+                    <input type="text" class="add-input" placeholder="Ví dụ: Kiểm tra gia hạn gói Plus..." @bind="_newTitle" />
+                </div>
+                <div class="add-field">
+                    <label>Hạn đến</label>
+                    <input type="date" class="add-input" @bind="_newDueDate" />
+                </div>
+                <div class="add-field">
+                    <label>Loại nhắc</label>
+                    <select class="add-select" @bind="_newType">
+                        <option value="Gia hạn">Gia hạn</option>
+                        <option value="Bảo mật">Bảo mật</option>
+                        <option value="Kiểm tra kết nối">Kiểm tra kết nối</option>
+                        <option value="Tùy chỉnh">Tùy chỉnh</option>
+                    </select>
+                </div>
+            </div>
+            <div class="add-actions">
+                <button type="button" class="btn-cancel" @onclick="ToggleAddForm">Hủy</button>
+                <button type="button" class="btn-submit" @onclick="CreateReminder">Lưu nhắc nhở</button>
+            </div>
+        </div>
+    }
+
+    @if (_loading)
+    {
+        <div class="reminders-loading">Đang tải nhắc nhở...</div>
+    }
+    else if (_reminders.Count == 0)
+    {
+        <div class="reminders-empty">
+            <p>Không có nhắc nhở nào đang chờ cho tài khoản này.</p>
+        </div>
+    }
+    else
+    {
+        <div class="reminders-list">
+            @foreach (var r in _reminders)
+            {
+                <div class="reminder-card @(r.IsCompleted ? "completed" : "")" @key="r.ReminderId">
+                    <input type="checkbox"
+                           class="reminder-checkbox"
+                           checked="@r.IsCompleted"
+                           @onchange="() => ToggleComplete(r.ReminderId)"
+                           aria-label="Đánh dấu hoàn thành @r.Title" />
+
+                    <div class="reminder-body">
+                        <span class="reminder-title">@r.Title</span>
+                        <div class="reminder-meta-row">
+                            <span class="reminder-type-tag">@r.Type</span>
+                            <span class="reminder-date">Hạn: @r.DueDate.ToString("dd/MM/yyyy")</span>
+                        </div>
+                    </div>
+
+                    <span class="reminder-status-badge status-@GetStatusClass(r.Status)">
+                        @r.Status
+                    </span>
+
+                    <button type="button"
+                            class="btn-delete-reminder"
+                            title="Xóa nhắc nhở"
+                            @onclick="() => DeleteReminder(r.ReminderId)">
+                        ✕
+                    </button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    [Parameter] public EventCallback<string> OnNotify { get; set; }
+
+    private List<ReminderVm> _reminders = [];
+    private bool _loading = true;
+    private bool _showAddForm = false;
+
+    private string _newTitle = string.Empty;
+    private DateTime _newDueDate = DateTime.Now.AddDays(7);
+    private string _newType = "Gia hạn";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadReminders();
+    }
+
+    private async Task LoadReminders()
+    {
+        _loading = true;
+        try
+        {
+            _reminders = (await ReminderPort.GetRemindersAsync(AccountId)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ToggleAddForm()
+    {
+        _showAddForm = !_showAddForm;
+    }
+
+    private async Task CreateReminder()
+    {
+        if (string.IsNullOrWhiteSpace(_newTitle)) return;
+
+        var dto = new DateTimeOffset(_newDueDate, TimeSpan.FromHours(7));
+        var res = await ReminderPort.CreateReminderAsync(AccountId, _newTitle, dto, _newType);
+        if (res.IsSuccess)
+        {
+            _showAddForm = false;
+            _newTitle = string.Empty;
+            await LoadReminders();
+            await OnNotify.InvokeAsync("Đã thêm nhắc nhở.");
+        }
+    }
+
+    private async Task ToggleComplete(Guid reminderId)
+    {
+        await ReminderPort.ToggleCompleteAsync(reminderId);
+        await LoadReminders();
+    }
+
+    private async Task DeleteReminder(Guid reminderId)
+    {
+        await ReminderPort.DeleteReminderAsync(reminderId);
+        await LoadReminders();
+        await OnNotify.InvokeAsync("Đã xóa nhắc nhở.");
+    }
+
+    private static string GetStatusClass(string status) => status switch
+    {
+        "Đến hạn" => "due",
+        "Hoàn thành" => "done",
+        _ => "upcoming"
+    };
+}

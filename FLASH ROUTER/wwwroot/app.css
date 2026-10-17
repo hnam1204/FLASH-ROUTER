@@ -1,0 +1,23 @@
+#blazor-error-ui {
+    background: var(--flash-danger);
+    bottom: 0;
+    box-shadow: var(--flash-shadow);
+    color: white;
+    display: none;
+    left: 0;
+    padding: 0.85rem 1.2rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+#blazor-error-ui .reload {
+    color: white;
+    font-weight: 700;
+    margin-left: 0.5rem;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    float: right;
+}

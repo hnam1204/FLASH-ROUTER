@@ -1,0 +1,7 @@
+.flash-app-wrapper {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--app-bg);
+    color: var(--text-primary);
+}

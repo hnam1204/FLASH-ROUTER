@@ -1,0 +1,81 @@
+@namespace FLASH_ROUTER.Components.Console.Components
+
+@if (IsOpen)
+{
+    <div class="flash-overlay-backdrop">
+        <div class="flash-modal-card automation-progress-modal" role="dialog" aria-modal="true" aria-labelledby="auto-dialog-title">
+            <div class="flash-modal-header">
+                <div class="automation-header-left">
+                    <div class="status-indicator-dot @(IsRunning ? "is-pulsing" : IsSuccess ? "is-success" : "is-failed")"></div>
+                    <h3 id="auto-dialog-title" class="flash-modal-title">@DialogTitle</h3>
+                </div>
+                @if (!IsRunning)
+                {
+                    <button type="button" class="flash-modal-close-btn" @onclick="HandleClose" aria-label="Đóng">✕</button>
+                }
+            </div>
+
+            <div class="flash-modal-body">
+                <div class="progress-status-container">
+                    @if (IsRunning)
+                    {
+                        <div class="progress-spinner" aria-hidden="true"></div>
+                    }
+                    else if (IsSuccess)
+                    {
+                        <div class="progress-success-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="progress-error-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="8" x2="12" y2="12"></line>
+                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            </svg>
+                        </div>
+                    }
+
+                    <div class="progress-message-content">
+                        <span class="stage-tag">@CurrentStage</span>
+                        <p class="status-main-message">@StatusMessage</p>
+                        @if (!string.IsNullOrEmpty(TechnicalDetail))
+                        {
+                            <span class="technical-detail">@TechnicalDetail</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="flash-modal-footer">
+                @if (IsRunning)
+                {
+                    <button type="button" class="flash-btn flash-btn-outline" @onclick="HandleCancel">Hủy thao tác</button>
+                }
+                else
+                {
+                    <button type="button" class="flash-btn flash-btn-primary" @onclick="HandleClose">Đóng</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string DialogTitle { get; set; } = "Thực thi Browser Automation";
+    [Parameter] public string StatusMessage { get; set; } = "";
+    [Parameter] public string CurrentStage { get; set; } = "Initializing";
+    [Parameter] public string? TechnicalDetail { get; set; }
+    [Parameter] public bool IsRunning { get; set; }
+    [Parameter] public bool IsSuccess { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private async Task HandleClose() => await OnClose.InvokeAsync();
+    private async Task HandleCancel() => await OnCancel.InvokeAsync();
+}

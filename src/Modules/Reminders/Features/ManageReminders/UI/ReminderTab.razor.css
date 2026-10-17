@@ -1,0 +1,219 @@
+.reminder-tab-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.reminder-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--flash-text-primary);
+    margin: 0;
+}
+
+.section-sub {
+    font-size: 12px;
+    color: var(--flash-text-secondary);
+    margin: 2px 0 0;
+}
+
+.btn-new-reminder {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--flash-primary);
+    color: white;
+    border-radius: var(--flash-radius-sm);
+}
+
+.reminder-add-card {
+    background: var(--flash-surface-muted);
+    border: 1px solid var(--flash-border);
+    border-radius: var(--flash-radius-md);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.add-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--flash-text-primary);
+    margin: 0;
+}
+
+.add-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 10px;
+}
+
+.add-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.add-field label {
+    font-size: 11px;
+    color: var(--flash-text-secondary);
+}
+
+.add-input,
+.add-select {
+    padding: 7px 10px;
+    font-size: 13px;
+    border: 1px solid var(--flash-border);
+    border-radius: var(--flash-radius-sm);
+    background: var(--flash-surface);
+    color: var(--flash-text-primary);
+}
+
+.add-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.btn-cancel {
+    padding: 6px 12px;
+    font-size: 12px;
+    border: 1px solid var(--flash-border);
+    border-radius: var(--flash-radius-sm);
+    background: var(--flash-surface);
+    color: var(--flash-text-secondary);
+}
+
+.btn-submit {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--flash-primary);
+    color: white;
+    border-radius: var(--flash-radius-sm);
+}
+
+.reminders-loading,
+.reminders-empty {
+    padding: 32px;
+    text-align: center;
+    color: var(--flash-text-secondary);
+    font-size: 13px;
+}
+
+.reminders-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.reminder-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--flash-surface);
+    border: 1px solid var(--flash-border);
+    border-radius: var(--flash-radius-md);
+    transition: background-color var(--flash-transition-fast);
+}
+
+.reminder-card.completed {
+    opacity: 0.65;
+    background: var(--flash-surface-muted);
+}
+
+.reminder-card.completed .reminder-title {
+    text-decoration: line-through;
+}
+
+.reminder-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--flash-primary);
+    cursor: pointer;
+}
+
+.reminder-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.reminder-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--flash-text-primary);
+}
+
+.reminder-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.reminder-type-tag {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: var(--flash-radius-pill);
+    background: var(--flash-surface-muted);
+    border: 1px solid var(--flash-border);
+    color: var(--flash-text-secondary);
+}
+
+.reminder-date {
+    font-size: 11px;
+    color: var(--flash-text-muted);
+}
+
+.reminder-status-badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: var(--flash-radius-pill);
+}
+
+.status-due {
+    background: #FEF3C7;
+    color: #D97706;
+}
+
+.status-upcoming {
+    background: var(--flash-primary-light);
+    color: var(--flash-primary);
+}
+
+.status-done {
+    background: #E8F7F0;
+    color: #16865D;
+}
+
+.btn-delete-reminder {
+    color: var(--flash-text-muted);
+    font-size: 12px;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--flash-radius-sm);
+}
+
+.btn-delete-reminder:hover {
+    color: var(--flash-danger);
+    background: var(--flash-danger-light);
+}
+
+@media (max-width: 768px) {
+    .add-grid {
+        grid-template-columns: 1fr;
+    }
+}

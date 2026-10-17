@@ -1,0 +1,26 @@
+# Build output
+**/bin/
+**/obj/
+.vs/
+
+# Project-local runtime data and caches
+.local/
+.tools/
+.nuget/
+.dotnet-home/
+
+# SQLite runtime files and disposable integration-test databases
+.local/data/flashrouter.db
+.local/data/flashrouter.db-*
+.local/test-data/
+
+# IDE/user files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local reports
+TestResults/
+artifacts/
+

@@ -1,0 +1,23 @@
+@page "/reminders"
+
+<PageTitle>Reminders | FLASH ROUTER</PageTitle>
+
+<section class="reminders-page" aria-labelledby="reminders-title">
+    <div class="reminders-intro">
+        <p class="reminders-eyebrow">BACKGROUND WORK</p>
+        <h1 id="reminders-title">Reminders</h1>
+        <p class="reminders-description">A home for local reminders, idempotent jobs, retries, cancellation, and safe activity history.</p>
+    </div>
+
+    <div class="reminders-status" role="status">
+        <span class="reminders-status-mark" aria-hidden="true"></span>
+        <div>
+            <p class="reminders-status-label">Phase 0A status</p>
+            <h2>Scheduler is not running</h2>
+            <p>Background jobs cannot log in, rotate accounts, or make provider status claims.</p>
+        </div>
+    </div>
+
+    <a class="reminders-action" href="/activity">Open Activity<span aria-hidden="true"> -></span></a>
+</section>
+

@@ -1,0 +1,99 @@
+@using FlashAI.Modules.Activity.Contracts
+@inject IActivityUiPort ActivityPort
+
+<div class="activity-tab-container">
+    <div class="activity-filter-bar">
+        <span class="filter-label">Mức độ:</span>
+        <button type="button" class="filter-chip @(_filter == "all" ? "active" : "")" @onclick='() => ChangeFilter("all")'>
+            Tất cả
+        </button>
+        <button type="button" class="filter-chip @(_filter == "Success" ? "active" : "")" @onclick='() => ChangeFilter("Success")'>
+            Thành công
+        </button>
+        <button type="button" class="filter-chip @(_filter == "Warning" ? "active" : "")" @onclick='() => ChangeFilter("Warning")'>
+            Cảnh báo
+        </button>
+        <button type="button" class="filter-chip @(_filter == "Error" ? "active" : "")" @onclick='() => ChangeFilter("Error")'>
+            Lỗi
+        </button>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="activity-loading">Đang tải nhật ký hoạt động...</div>
+    }
+    else if (_events.Count == 0)
+    {
+        <div class="activity-empty">
+            <p>Không có sự kiện nhật ký nào phù hợp với bộ lọc.</p>
+        </div>
+    }
+    else
+    {
+        <div class="activity-timeline">
+            @foreach (var ev in _events)
+            {
+                <div class="activity-card @(ev.EventId == _selectedEventId ? "expanded" : "")"
+                     @key="ev.EventId"
+                     @onclick="() => ToggleEventDetails(ev.EventId)">
+                    <div class="event-header-row">
+                        <div class="event-title-group">
+                            <span class="event-indicator severity-@ev.Severity.ToLowerInvariant()"></span>
+                            <span class="event-type">@ev.EventType</span>
+                            <span class="event-time">@ev.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                        </div>
+                        <span class="event-caret">@(_selectedEventId == ev.EventId ? "▲" : "▼")</span>
+                    </div>
+
+                    <p class="event-summary">@ev.Summary</p>
+
+                    @if (_selectedEventId == ev.EventId && !string.IsNullOrEmpty(ev.SafeDetails))
+                    {
+                        <div class="event-details-box" @onclick:stopPropagation="true">
+                            <h5 class="details-heading">Chi tiết kỹ thuật an toàn:</h5>
+                            <p class="details-content">@ev.SafeDetails</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+
+    private List<ActivityEventVm> _events = [];
+    private bool _loading = true;
+    private string _filter = "all";
+    private Guid? _selectedEventId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadEvents();
+    }
+
+    private async Task LoadEvents()
+    {
+        _loading = true;
+        try
+        {
+            _events = (await ActivityPort.GetEventsAsync(AccountId, _filter)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ChangeFilter(string filter)
+    {
+        _filter = filter;
+        await LoadEvents();
+    }
+
+    private void ToggleEventDetails(Guid eventId)
+    {
+        _selectedEventId = _selectedEventId == eventId ? null : eventId;
+    }
+}

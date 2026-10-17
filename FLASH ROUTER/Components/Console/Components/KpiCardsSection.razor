@@ -1,0 +1,107 @@
+@namespace FLASH_ROUTER.Components.Console.Components
+
+<div class="kpi-cards-grid" role="region" aria-label="Chỉ số tổng quan tài khoản">
+    <!-- Card 1: Tổng account -->
+    <div class="kpi-card">
+        <div class="kpi-card-inner">
+            <div class="kpi-icon-badge kpi-icon-blue">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+            </div>
+            <div class="kpi-content">
+                <span class="kpi-label">Tổng account</span>
+                <div class="kpi-value-row">
+                    <span class="kpi-value">@TotalAccounts</span>
+                    <span class="kpi-trend positive">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="18 15 12 9 6 15"></polyline>
+                        </svg>
+                        +12%
+                    </span>
+                </div>
+                <span class="kpi-subtext">So với tháng trước</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 2: Đang hoạt động -->
+    <div class="kpi-card">
+        <div class="kpi-card-inner">
+            <div class="kpi-icon-badge kpi-icon-green">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"></polygon>
+                </svg>
+            </div>
+            <div class="kpi-content">
+                <span class="kpi-label">Đang hoạt động</span>
+                <span class="kpi-value">@ActiveAccounts</span>
+                <div class="kpi-progress-row">
+                    <div class="kpi-progress-bar">
+                        <div class="kpi-progress-fill fill-green" style="width: @(ActivePercentage)%;"></div>
+                    </div>
+                    <span class="kpi-percentage">@(ActivePercentage)%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 3: Cần xác minh -->
+    <div class="kpi-card">
+        <div class="kpi-card-inner">
+            <div class="kpi-icon-badge kpi-icon-amber">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+            </div>
+            <div class="kpi-content">
+                <span class="kpi-label">Cần xác minh</span>
+                <span class="kpi-value">@UnverifiedAccounts</span>
+                <div class="kpi-progress-row">
+                    <div class="kpi-progress-bar">
+                        <div class="kpi-progress-fill fill-amber" style="width: @(UnverifiedPercentage)%;"></div>
+                    </div>
+                    <span class="kpi-percentage">@(UnverifiedPercentage)%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 4: Đã lỗi -->
+    <div class="kpi-card">
+        <div class="kpi-card-inner">
+            <div class="kpi-icon-badge kpi-icon-red">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+            </div>
+            <div class="kpi-content">
+                <span class="kpi-label">Đã lỗi</span>
+                <span class="kpi-value">@FailedAccounts</span>
+                <div class="kpi-progress-row">
+                    <div class="kpi-progress-bar">
+                        <div class="kpi-progress-fill fill-red" style="width: @(FailedPercentage)%;"></div>
+                    </div>
+                    <span class="kpi-percentage">@(FailedPercentage)%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int TotalAccounts { get; set; }
+    [Parameter] public int ActiveAccounts { get; set; }
+    [Parameter] public int UnverifiedAccounts { get; set; }
+    [Parameter] public int FailedAccounts { get; set; }
+
+    private int ActivePercentage => TotalAccounts > 0 ? (int)Math.Round((double)ActiveAccounts * 100 / TotalAccounts) : 0;
+    private int UnverifiedPercentage => TotalAccounts > 0 ? (int)Math.Round((double)UnverifiedAccounts * 100 / TotalAccounts) : 0;
+    private int FailedPercentage => TotalAccounts > 0 ? (int)Math.Round((double)FailedAccounts * 100 / TotalAccounts) : 0;
+}

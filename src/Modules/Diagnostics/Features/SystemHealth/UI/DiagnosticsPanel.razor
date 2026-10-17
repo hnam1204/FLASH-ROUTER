@@ -1,0 +1,58 @@
+@using FlashAI.Modules.Diagnostics.Contracts
+@inject IDiagnosticsUiPort DiagnosticsPort
+
+<div class="settings-pane diagnostics-panel-root">
+    <h4 class="pane-title">Báo cáo chẩn đoán hệ thống</h4>
+    <p class="pane-desc">Thông tin trung thực về trạng thái ứng dụng và môi trường chạy.</p>
+
+    @if (_diag != null)
+    {
+        <div class="diag-table">
+            <div class="diag-row">
+                <span class="d-key">Ràng buộc máy chủ</span>
+                <span class="d-val highlight-green">@_diag.HostBinding</span>
+            </div>
+            <div class="diag-row">
+                <span class="d-key">Runtime .NET</span>
+                <span class="d-val">@_diag.SdkVersion</span>
+            </div>
+            <div class="diag-row">
+                <span class="d-key">Target Framework</span>
+                <span class="d-val">@_diag.TargetFramework</span>
+            </div>
+            <div class="diag-row">
+                <span class="d-key">Chế độ vận hành</span>
+                <span class="d-val highlight-blue">@_diag.Mode</span>
+            </div>
+            <div class="diag-row">
+                <span class="d-key">Trạng thái lưu trữ SQLite</span>
+                <span class="d-val highlight-warn">@_diag.DurableStorageStatus</span>
+            </div>
+            <div class="diag-row">
+                <span class="d-key">Két bảo mật DPAPI</span>
+                <span class="d-val">@_diag.VaultStatus</span>
+            </div>
+        </div>
+
+        <h5 class="module-status-heading">@_diag.ModuleStatuses.Count Module đã đăng ký:</h5>
+        <div class="module-chips-grid">
+            @foreach (var m in _diag.ModuleStatuses)
+            {
+                <div class="module-chip">
+                    <span class="m-dot"></span>
+                    <span class="m-name">@m.Key</span>
+                    <span class="m-status">@m.Value</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private DiagnosticsVm? _diag;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _diag = await DiagnosticsPort.GetDiagnosticsAsync();
+    }
+}

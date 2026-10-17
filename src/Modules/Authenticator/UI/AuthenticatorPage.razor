@@ -1,0 +1,23 @@
+@page "/authenticator"
+
+<PageTitle>Authenticator | FLASH ROUTER</PageTitle>
+
+<section class="authenticator-page" aria-labelledby="authenticator-title">
+    <div class="authenticator-intro">
+        <p class="authenticator-eyebrow">LOCAL TOTP</p>
+        <h1 id="authenticator-title">Authenticator</h1>
+        <p class="authenticator-description">A local-only boundary for RFC 6238 credentials and code generation from secrets the user is authorized to use.</p>
+    </div>
+
+    <div class="authenticator-status" role="status">
+        <span class="authenticator-status-mark" aria-hidden="true"></span>
+        <div>
+            <p class="authenticator-status-label">BE-02 status</p>
+            <h2>DPAPI-protected local vault available</h2>
+            <p>Integrated mode stores credential values locally in authenticated encrypted storage. Preview mode remains explicitly in-memory and synthetic.</p>
+        </div>
+    </div>
+
+    <a class="authenticator-action" href="/diagnostics">Read Security Notes<span aria-hidden="true"> -></span></a>
+</section>
+

@@ -1,0 +1,26 @@
+@using FlashAI.Modules.Connections.Features.ManageConnections.UI
+@page "/connections"
+
+<PageTitle>Connections | FLASH ROUTER</PageTitle>
+
+<section class="connections-page" aria-labelledby="connections-title">
+    <div class="connections-intro">
+        <p class="connections-eyebrow">OFFICIAL AUTHORIZATION</p>
+        <h1 id="connections-title">Connections</h1>
+        <p class="connections-description">A boundary for provider identity and explicitly authorized sessions. Live OAuth remains behind the official feasibility gate.</p>
+    </div>
+
+    <div class="connections-status" role="status">
+        <span class="connections-status-mark" aria-hidden="true"></span>
+        <div>
+        <p class="connections-status-label">BE-03 offline status</p>
+            <h2>Official OAuth is blocked for live use</h2>
+            <p>Contracts, callback validation, vault references, refresh handling, and SQLite metadata are implemented offline. Eligibility and live authorization remain unverified.</p>
+        </div>
+    </div>
+
+    <a class="connections-action" href="/diagnostics">Read Diagnostics<span aria-hidden="true"> -></span></a>
+
+    <ProviderIntegrationPanel />
+</section>
+

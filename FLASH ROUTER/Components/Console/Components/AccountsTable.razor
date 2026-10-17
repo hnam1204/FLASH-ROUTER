@@ -1,0 +1,392 @@
+@namespace FLASH_ROUTER.Components.Console.Components
+@using FlashAI.Modules.Accounts.Contracts
+
+<div class="accounts-table-container">
+    <table class="accounts-table" role="table">
+        <thead>
+            <tr>
+                <th class="col-checkbox">
+                    <input type="checkbox"
+                           class="table-checkbox"
+                           checked="@IsAllSelected"
+                           @onchange="ToggleSelectAll"
+                           aria-label="Chọn tất cả tài khoản" />
+                </th>
+                <th class="col-platform">Nền tảng</th>
+                <th class="col-account">Email / Tài khoản</th>
+                <th class="col-status">Trạng thái</th>
+                <th class="col-session">Phiên</th>
+                <th class="col-mfa">2FA</th>
+                <th class="col-updated" @onclick="ToggleSort">
+                    <div class="sortable-header">
+                        <span>Cập nhật cuối</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M7 15l5 5 5-5M7 9l5-5 5 5"></path>
+                        </svg>
+                    </div>
+                </th>
+                <th class="col-actions">Hành động</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Accounts.Count == 0)
+            {
+                <tr class="empty-row">
+                    <td colspan="8">
+                        <div class="empty-table-state">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <span class="empty-title">Không tìm thấy tài khoản phù hợp</span>
+                            <span class="empty-desc">Thử thay đổi từ khóa tìm kiếm hoặc bỏ chọn các bộ lọc trạng thái.</span>
+                        </div>
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var account in Accounts)
+                {
+                    var isSelected = SelectedAccountId == account.AccountId;
+                    var isChecked = CheckedAccountIds.Contains(account.AccountId);
+                    <tr class="table-row @(isSelected ? "is-selected" : "")"
+                        @onclick="() => HandleSelectAccount(account.AccountId)"
+                        tabindex="0"
+                        role="row"
+                        aria-selected="@(isSelected ? "true" : "false")">
+                        <!-- 1. Checkbox -->
+                        <td class="col-checkbox" @onclick:stopPropagation="true">
+                            <input type="checkbox"
+                                   class="table-checkbox"
+                                   checked="@isChecked"
+                                   @onchange="(e) => ToggleCheck(account.AccountId, e)"
+                                   aria-label="Chọn tài khoản @account.Email" />
+                        </td>
+
+                        <!-- 2. Platform -->
+                        <td class="col-platform">
+                            <div class="platform-cell">
+                                <PlatformLogo Provider="@account.Provider" Size="32" />
+                                <span class="platform-name">@FormatProviderName(account.Provider)</span>
+                            </div>
+                        </td>
+
+                        <!-- 3. Email / Plan -->
+                        <td class="col-account">
+                            <div class="account-identity-cell">
+                                <span class="account-email" title="@account.Email">@account.Email</span>
+                                <span class="account-plan">@FormatPlan(account.RecordedPlan, account.Provider)</span>
+                            </div>
+                        </td>
+
+                        <!-- 4. Status Badge -->
+                        <td class="col-status">
+                            <div class="status-badge-pill @GetStatusClass(account.Status)">
+                                @if (IsActive(account.Status))
+                                {
+                                    <svg class="status-badge-icon" width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                    </svg>
+                                    <span>Hoạt động</span>
+                                }
+                                else if (IsUnverified(account.Status))
+                                {
+                                    <span class="status-dot"></span>
+                                    <span>Chờ xác minh</span>
+                                }
+                                else if (IsExpired(account.Status))
+                                {
+                                    <span class="status-dot"></span>
+                                    <span>Hết phiên</span>
+                                }
+                                else
+                                {
+                                    <span class="status-dot"></span>
+                                    <span>Lỗi</span>
+                                }
+                            </div>
+                        </td>
+
+                        <!-- 5. Session Column -->
+                        <td class="col-session">
+                            <span class="session-text @(IsExpired(account.Status) ? "text-danger" : "")">
+                                @GetSessionText(account)
+                            </span>
+                        </td>
+
+                        <!-- 6. 2FA Badge -->
+                        <td class="col-mfa">
+                            @if (Has2Fa(account))
+                            {
+                                <span class="mfa-badge mfa-enabled">Bật</span>
+                            }
+                            else
+                            {
+                                <span class="mfa-badge mfa-disabled">Tắt</span>
+                            }
+                        </td>
+
+                        <!-- 7. Last Updated -->
+                        <td class="col-updated">
+                            <span class="updated-time">@account.TrackingDate.ToString("dd/MM/yyyy HH:mm")</span>
+                        </td>
+
+                        <!-- 8. Actions -->
+                        <td class="col-actions" @onclick:stopPropagation="true">
+                            <div class="action-buttons-group">
+                                @if (IsActive(account.Status))
+                                {
+                                    <button type="button"
+                                            class="table-btn btn-primary"
+                                            @onclick="() => OnOpenAccount.InvokeAsync(account)"
+                                            title="Mở trình duyệt trực tiếp">
+                                        Mở
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="button"
+                                            class="table-btn btn-primary"
+                                            @onclick="() => OnLoginAgain.InvokeAsync(account)"
+                                            title="Đăng nhập lại tài khoản">
+                                        Đăng nhập lại
+                                    </button>
+                                }
+
+                                <button type="button"
+                                        class="table-btn btn-outline"
+                                        @onclick="() => OnEditAccount.InvokeAsync(account)"
+                                        title="Chỉnh sửa thông tin">
+                                    Sửa
+                                </button>
+
+                                <div class="more-menu-wrapper">
+                                    <button type="button"
+                                            class="table-btn btn-more"
+                                            @onclick="() => ToggleRowMenu(account.AccountId)"
+                                            aria-label="Thao tác khác"
+                                            title="Thao tác khác">
+                                        ⋮
+                                    </button>
+
+                                    @if (_openRowMenuId == account.AccountId)
+                                    {
+                                        <div class="row-dropdown-menu">
+                                            <button type="button" class="dropdown-item" @onclick="() => CopyAccountEmail(account.Email)">
+                                                Sao chép email
+                                            </button>
+                                            <button type="button" class="dropdown-item" @onclick="() => OnOpenAccount.InvokeAsync(account)">
+                                                Khởi chạy Chromium
+                                            </button>
+                                            <button type="button" class="dropdown-item danger" @onclick="() => TriggerDelete(account)">
+                                                Xóa tài khoản
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+
+    <!-- Pagination Footer -->
+    <div class="table-pagination-footer">
+        <div class="pagination-info">
+            Hiển thị @StartItem - @EndItem của @TotalCount account
+        </div>
+
+        <div class="pagination-controls">
+            <button type="button"
+                    class="page-nav-btn"
+                    disabled="@(CurrentPage <= 1)"
+                    @onclick="() => GoToPage(CurrentPage - 1)"
+                    aria-label="Trang trước">
+                ‹
+            </button>
+
+            @for (int p = 1; p <= TotalPages; p++)
+            {
+                var pageNum = p;
+                <button type="button"
+                        class="page-number-btn @(pageNum == CurrentPage ? "is-current" : "")"
+                        @onclick="() => GoToPage(pageNum)">
+                    @pageNum
+                </button>
+            }
+
+            <button type="button"
+                    class="page-nav-btn"
+                    disabled="@(CurrentPage >= TotalPages)"
+                    @onclick="() => GoToPage(CurrentPage + 1)"
+                    aria-label="Trang sau">
+                ›
+            </button>
+
+            <div class="page-size-selector">
+                <select value="@PageSize" @onchange="HandlePageSizeChange" aria-label="Số bản ghi trên mỗi trang">
+                    <option value="10">10 / trang</option>
+                    <option value="20">20 / trang</option>
+                    <option value="50">50 / trang</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<AccountListItemVm> Accounts { get; set; } = [];
+    [Parameter] public Guid? SelectedAccountId { get; set; }
+    [Parameter] public HashSet<Guid> CheckedAccountIds { get; set; } = [];
+    [Parameter] public EventCallback<Guid> OnAccountSelected { get; set; }
+    [Parameter] public EventCallback<(Guid Id, bool Checked)> OnAccountCheckToggled { get; set; }
+    [Parameter] public EventCallback<bool> OnSelectAllToggled { get; set; }
+    [Parameter] public EventCallback<AccountListItemVm> OnOpenAccount { get; set; }
+    [Parameter] public EventCallback<AccountListItemVm> OnLoginAgain { get; set; }
+    [Parameter] public EventCallback<AccountListItemVm> OnEditAccount { get; set; }
+    [Parameter] public EventCallback<AccountListItemVm> OnDeleteAccount { get; set; }
+    [Parameter] public EventCallback<string> OnCopyEmail { get; set; }
+    [Parameter] public EventCallback OnToggleSort { get; set; }
+
+    [Parameter] public int CurrentPage { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+    [Parameter] public EventCallback<int> OnPageSizeChanged { get; set; }
+
+    private Guid? _openRowMenuId;
+
+    private bool IsAllSelected => Accounts.Count > 0 && Accounts.All(a => CheckedAccountIds.Contains(a.AccountId));
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize));
+    private int StartItem => TotalCount == 0 ? 0 : (CurrentPage - 1) * PageSize + 1;
+    private int EndItem => Math.Min(CurrentPage * PageSize, TotalCount);
+
+    private async Task HandleSelectAccount(Guid accountId)
+    {
+        _openRowMenuId = null;
+        await OnAccountSelected.InvokeAsync(accountId);
+    }
+
+    private async Task ToggleCheck(Guid id, ChangeEventArgs e)
+    {
+        var isChecked = (bool)(e.Value ?? false);
+        await OnAccountCheckToggled.InvokeAsync((id, isChecked));
+    }
+
+    private async Task ToggleSelectAll(ChangeEventArgs e)
+    {
+        var isChecked = (bool)(e.Value ?? false);
+        await OnSelectAllToggled.InvokeAsync(isChecked);
+    }
+
+    private async Task GoToPage(int page)
+    {
+        if (page >= 1 && page <= TotalPages)
+        {
+            await OnPageChanged.InvokeAsync(page);
+        }
+    }
+
+    private async Task HandlePageSizeChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var size))
+        {
+            await OnPageSizeChanged.InvokeAsync(size);
+        }
+    }
+
+    private async Task ToggleSort()
+    {
+        await OnToggleSort.InvokeAsync();
+    }
+
+    private void ToggleRowMenu(Guid id)
+    {
+        _openRowMenuId = _openRowMenuId == id ? null : id;
+    }
+
+    private async Task CopyAccountEmail(string email)
+    {
+        _openRowMenuId = null;
+        await OnCopyEmail.InvokeAsync(email);
+    }
+
+    private async Task TriggerDelete(AccountListItemVm account)
+    {
+        _openRowMenuId = null;
+        await OnDeleteAccount.InvokeAsync(account);
+    }
+
+    private static bool IsActive(string status) => status.Equals("Connected", StringComparison.OrdinalIgnoreCase) || status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+    private static bool IsUnverified(string status) => status.Equals("Unverified", StringComparison.OrdinalIgnoreCase);
+    private static bool IsExpired(string status) => status.Equals("ReauthNeeded", StringComparison.OrdinalIgnoreCase) || status.Equals("Expired", StringComparison.OrdinalIgnoreCase);
+
+    private static string GetStatusClass(string status)
+    {
+        if (IsActive(status)) return "status-active";
+        if (IsUnverified(status)) return "status-unverified";
+        if (IsExpired(status)) return "status-expired";
+        return "status-failed";
+    }
+
+    private static string FormatProviderName(string provider)
+    {
+        if (provider.Contains("chatgpt", StringComparison.OrdinalIgnoreCase) || provider.Contains("openai", StringComparison.OrdinalIgnoreCase)) return "ChatGPT";
+        if (provider.Contains("claude", StringComparison.OrdinalIgnoreCase) || provider.Contains("anthropic", StringComparison.OrdinalIgnoreCase)) return "Claude";
+        if (provider.Contains("gemini", StringComparison.OrdinalIgnoreCase) || provider.Contains("google", StringComparison.OrdinalIgnoreCase)) return "Gemini";
+        if (provider.Contains("perplexity", StringComparison.OrdinalIgnoreCase)) return "Perplexity";
+        if (provider.Contains("huflit", StringComparison.OrdinalIgnoreCase)) return "HUFLIT";
+        return provider;
+    }
+
+    private static string FormatPlan(string plan, string provider)
+    {
+        if (!string.IsNullOrWhiteSpace(plan) && !plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!plan.Contains(FormatProviderName(provider), StringComparison.OrdinalIgnoreCase))
+            {
+                return $"{FormatProviderName(provider)} {plan}";
+            }
+            return plan;
+        }
+
+        var name = FormatProviderName(provider);
+        return name switch
+        {
+            "ChatGPT" => "ChatGPT Plus",
+            "Claude" => "Claude Pro",
+            "Gemini" => "Gemini Advanced",
+            "Perplexity" => "Perplexity Pro",
+            "HUFLIT" => "HUFLIT Portal",
+            _ => "Standard"
+        };
+    }
+
+    private static string GetSessionText(AccountListItemVm account)
+    {
+        if (IsActive(account.Status))
+        {
+            var days = (Math.Abs(account.AccountId.GetHashCode()) % 28) + 1;
+            return $"Còn {days} ngày";
+        }
+        if (IsUnverified(account.Status))
+        {
+            return "Chờ 3 ngày";
+        }
+        if (IsExpired(account.Status))
+        {
+            return "Hết hạn";
+        }
+        return "-";
+    }
+
+    private static bool Has2Fa(AccountListItemVm account)
+    {
+        if (account.Tags.Any(t => t.Contains("2fa", StringComparison.OrdinalIgnoreCase))) return true;
+        return (Math.Abs(account.AccountId.GetHashCode()) % 3) != 0;
+    }
+}

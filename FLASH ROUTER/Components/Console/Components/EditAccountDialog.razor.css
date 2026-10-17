@@ -1,0 +1,53 @@
+.edit-account-modal {
+    max-width: 520px;
+}
+
+.modal-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.modal-form-row {
+    display: flex;
+    gap: 14px;
+}
+
+.flex-1 {
+    flex: 1;
+}
+
+.form-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-input,
+.modal-select,
+.modal-textarea {
+    width: 100%;
+    background: var(--app-input);
+    border: 1px solid var(--app-border);
+    border-radius: var(--radius-md);
+    padding: 9px 12px;
+    color: var(--text-primary);
+    font-size: 13.5px;
+    box-sizing: border-box;
+    transition: all var(--transition-fast);
+}
+
+.readonly-input {
+    background: var(--app-surface-secondary);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+.modal-input:focus,
+.modal-select:focus,
+.modal-textarea:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--focus-ring);
+    outline: none;
+}

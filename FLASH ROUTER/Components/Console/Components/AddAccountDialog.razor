@@ -1,0 +1,193 @@
+@namespace FLASH_ROUTER.Components.Console.Components
+@using FlashAI.Modules.Accounts.Contracts
+@using FlashAI.Modules.Connections.Contracts
+@using FlashAI.Foundation.Security
+
+@if (IsOpen)
+{
+    <div class="flash-overlay-backdrop" @onclick="HandleClose">
+        <div class="flash-modal-card add-account-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="add-account-title">
+            <div class="flash-modal-header">
+                <h3 id="add-account-title" class="flash-modal-title">Thêm tài khoản mới</h3>
+                <button type="button" class="flash-modal-close-btn" @onclick="HandleClose" aria-label="Đóng">✕</button>
+            </div>
+
+            <div class="flash-modal-body">
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <div class="modal-error-banner" role="alert">
+                        <span>@_errorMessage</span>
+                    </div>
+                }
+
+                <!-- Quick Input line (EMAIL|PASS|2FA) matching CONSOLE-04 specification -->
+                <div class="modal-form-group">
+                    <div class="label-with-badge">
+                        <label for="quick-credential-input" class="form-label">Tài khoản (Quick input)</label>
+                        <span class="label-format-badge">EMAIL|PASS|2FA</span>
+                    </div>
+                    <div class="credential-input-box">
+                        <input id="quick-credential-input"
+                               type="@(_showPassword ? "text" : "password")"
+                               class="modal-input"
+                               placeholder="email|password|2fa_seed (tùy chọn)"
+                               value="@_quickInput"
+                               @oninput="HandleQuickInputChanged"
+                               autocomplete="off" />
+                        <button type="button" class="password-toggle-btn" @onclick="TogglePasswordVisibility">
+                            @if (_showPassword)
+                            {
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                                </svg>
+                            }
+                            else
+                            {
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            }
+                        </button>
+                    </div>
+                    <span class="field-help">Nhập nhanh theo cú pháp <code>email|pass|totp</code> hoặc điền chi tiết bên dưới.</span>
+                </div>
+
+                <!-- Platform selection -->
+                <div class="modal-form-group">
+                    <label class="form-label" for="add-platform">Nền tảng</label>
+                    <select id="add-platform" class="modal-select" @bind="_platform">
+                        <option value="chatgpt">ChatGPT (OpenAI)</option>
+                        <option value="claude">Claude (Anthropic)</option>
+                        <option value="gemini">Gemini (Google)</option>
+                        <option value="perplexity">Perplexity AI</option>
+                        <option value="huflit">HUFLIT Portal</option>
+                    </select>
+                </div>
+
+                <div class="modal-form-row">
+                    <!-- Email -->
+                    <div class="modal-form-group flex-1">
+                        <label class="form-label" for="add-email">Email tài khoản</label>
+                        <input id="add-email" type="email" class="modal-input" placeholder="name@example.com" @bind="_email" required />
+                    </div>
+
+                    <!-- Display Name -->
+                    <div class="modal-form-group flex-1">
+                        <label class="form-label" for="add-name">Tên hiển thị</label>
+                        <input id="add-name" type="text" class="modal-input" placeholder="Ví dụ: Tài khoản chính" @bind="_displayName" />
+                    </div>
+                </div>
+
+                <div class="modal-form-row">
+                    <!-- Plan -->
+                    <div class="modal-form-group flex-1">
+                        <label class="form-label" for="add-plan">Gói tài khoản</label>
+                        <input id="add-plan" type="text" class="modal-input" placeholder="Ví dụ: Plus / Pro / Free" @bind="_plan" />
+                    </div>
+
+                    <!-- Session Mode (Temporary vs KeepBrowserSession for test compatibility) -->
+                    <div class="modal-form-group flex-1">
+                        <label class="form-label">Chế độ phiên</label>
+                        <div class="radio-options-row">
+                            <label class="radio-label">
+                                <input type="radio" name="sessionMode" value="Temporary" checked="@(_sessionMode == BrowserSessionMode.Temporary)" @onchange='() => _sessionMode = BrowserSessionMode.Temporary' />
+                                <span>Temporary</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="sessionMode" value="KeepBrowserSession" checked="@(_sessionMode == BrowserSessionMode.KeepBrowserSession)" @onchange='() => _sessionMode = BrowserSessionMode.KeepBrowserSession' />
+                                <span>KeepBrowserSession</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                <div class="modal-form-group">
+                    <label class="form-label" for="add-notes">Ghi chú</label>
+                    <textarea id="add-notes" class="modal-textarea" rows="2" placeholder="Ghi chú thêm về mục đích sử dụng..." @bind="_notes"></textarea>
+                </div>
+            </div>
+
+            <div class="flash-modal-footer">
+                <button type="button" class="flash-btn flash-btn-outline" @onclick="HandleClose">Hủy</button>
+                <button type="button" class="flash-btn flash-btn-primary" @onclick="HandleSave">Lưu tài khoản</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<AccountEditorVm> OnSave { get; set; }
+
+    private string _quickInput = "";
+    private string _platform = "chatgpt";
+    private string _email = "";
+    private string _displayName = "";
+    private string _plan = "Plus";
+    private string _notes = "";
+    private string? _errorMessage;
+    private bool _showPassword = false;
+    private BrowserSessionMode _sessionMode = BrowserSessionMode.KeepBrowserSession;
+
+    private void TogglePasswordVisibility() => _showPassword = !_showPassword;
+
+    private void HandleQuickInputChanged(ChangeEventArgs e)
+    {
+        _quickInput = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrWhiteSpace(_quickInput) && CredentialLineCodec.TryParse(_quickInput, out var parsed, out _))
+        {
+            if (parsed != null)
+            {
+                _email = parsed.Account;
+                if (string.IsNullOrWhiteSpace(_displayName))
+                {
+                    _displayName = parsed.Account.Contains('@') ? parsed.Account.Split('@')[0] : parsed.Account;
+                }
+            }
+        }
+    }
+
+    private async Task HandleSave()
+    {
+        _errorMessage = null;
+        if (string.IsNullOrWhiteSpace(_email) || !_email.Contains('@'))
+        {
+            _errorMessage = "Vui lòng nhập địa chỉ email hợp lệ.";
+            return;
+        }
+
+        var editorVm = new AccountEditorVm
+        {
+            Email = _email.Trim(),
+            DisplayName = string.IsNullOrWhiteSpace(_displayName) ? _email.Split('@')[0] : _displayName.Trim(),
+            Provider = _platform,
+            RecordedPlan = string.IsNullOrWhiteSpace(_plan) ? "Standard" : _plan.Trim(),
+            Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes.Trim(),
+            Status = "Connected",
+            Tags = [_platform, "active"]
+        };
+
+        await OnSave.InvokeAsync(editorVm);
+        ResetForm();
+    }
+
+    private async Task HandleClose()
+    {
+        ResetForm();
+        await OnClose.InvokeAsync();
+    }
+
+    private void ResetForm()
+    {
+        _quickInput = "";
+        _email = "";
+        _displayName = "";
+        _plan = "Plus";
+        _notes = "";
+        _errorMessage = null;
+    }
+}

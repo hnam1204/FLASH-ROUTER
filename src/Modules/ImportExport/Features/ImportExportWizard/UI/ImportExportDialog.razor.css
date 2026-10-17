@@ -1,0 +1,233 @@
+.import-modal-card {
+    max-width: 640px;
+}
+
+.modal-tab-toggles {
+    display: flex;
+    gap: 4px;
+    background: var(--flash-surface-muted);
+    padding: 3px;
+    border-radius: var(--flash-radius-sm);
+}
+
+.tab-toggle-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--flash-text-secondary);
+    border-radius: var(--flash-radius-sm);
+    transition: all var(--flash-transition-fast);
+}
+
+.tab-toggle-btn.active {
+    background: var(--flash-surface);
+    color: var(--flash-primary);
+    box-shadow: var(--flash-shadow-sm);
+}
+
+.section-desc {
+    font-size: 13px;
+    color: var(--flash-text-secondary);
+    line-height: 1.5;
+    margin: 0 0 14px;
+}
+
+.section-desc code {
+    background: var(--flash-surface-muted);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--flash-font-mono, monospace);
+    font-size: 12px;
+}
+
+.csv-input-area,
+.export-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: var(--flash-font-mono, monospace);
+    font-size: 12px;
+    background: var(--flash-surface);
+    border: 1px solid var(--flash-border);
+    border-radius: var(--flash-radius-sm);
+    color: var(--flash-text-primary);
+    resize: vertical;
+}
+
+.parse-actions {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.btn-parse-csv {
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--flash-primary-light);
+    color: var(--flash-primary);
+    border-radius: var(--flash-radius-sm);
+    transition: background-color var(--flash-transition-fast);
+}
+
+.btn-parse-csv:hover {
+    background: var(--flash-surface-hover);
+}
+
+.preview-results-box {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.preview-summary-bar {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    padding: 8px 12px;
+    background: var(--flash-surface-muted);
+    border-radius: var(--flash-radius-sm);
+}
+
+.summary-stat.text-success {
+    color: #16865D;
+}
+
+.summary-stat.text-danger {
+    color: #DC3545;
+}
+
+.preview-table-container {
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid var(--flash-border);
+    border-radius: var(--flash-radius-sm);
+}
+
+.preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.preview-table th {
+    background: var(--flash-surface-muted);
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--flash-text-secondary);
+    border-bottom: 1px solid var(--flash-border);
+}
+
+.preview-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--flash-border-subtle);
+}
+
+.row-error {
+    background: #FFF5F5;
+}
+
+.badge-valid {
+    font-size: 11px;
+    color: #16865D;
+    background: #E8F7F0;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.badge-invalid {
+    font-size: 11px;
+    color: #DC3545;
+    background: #FEE2E2;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.conflict-selection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--flash-text-secondary);
+}
+
+.conflict-select {
+    padding: 5px 8px;
+    font-size: 12px;
+    border: 1px solid var(--flash-border);
+    border-radius: var(--flash-radius-sm);
+    background: var(--flash-surface);
+}
+
+.import-notice-banner {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: var(--flash-radius-sm);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.import-notice-banner.success {
+    background: #E8F7F0;
+    color: #16865D;
+}
+
+.import-notice-banner.error {
+    background: #FEF3C7;
+    color: #D97706;
+}
+
+/* Export Section */
+.export-options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.export-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--flash-text-primary);
+    cursor: pointer;
+}
+
+.export-checkbox-row input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--flash-primary);
+}
+
+.export-preview-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--flash-text-secondary);
+    margin-bottom: 6px;
+}
+
+.btn-dialog-ghost {
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--flash-text-secondary);
+    border: 1px solid var(--flash-border);
+    border-radius: var(--flash-radius-sm);
+    background: var(--flash-surface);
+}
+
+.btn-dialog-primary {
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--flash-primary);
+    color: white;
+    border-radius: var(--flash-radius-sm);
+}
+
+.btn-dialog-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

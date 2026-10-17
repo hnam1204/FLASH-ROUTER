@@ -1,0 +1,23 @@
+@page "/diagnostics"
+
+<PageTitle>Diagnostics | FLASH ROUTER</PageTitle>
+
+<section class="diagnostics-page" aria-labelledby="diagnostics-title">
+    <div class="diagnostics-intro">
+        <p class="diagnostics-eyebrow">SYSTEM TRUTH</p>
+        <h1 id="diagnostics-title">Diagnostics</h1>
+        <p class="diagnostics-description">Check host, binding, module, and environment readiness with redacted output.</p>
+    </div>
+
+    <div class="diagnostics-status" role="status">
+        <span class="diagnostics-status-mark" aria-hidden="true"></span>
+        <div>
+            <p class="diagnostics-status-label">Phase 0A status</p>
+            <h2>Architecture scaffold is ready</h2>
+            <p>Tokens, passwords, TOTP seeds, and vault content are excluded from diagnostics.</p>
+        </div>
+    </div>
+
+    <a class="diagnostics-action" href="/dashboard">Open Dashboard<span aria-hidden="true"> -></span></a>
+</section>
+

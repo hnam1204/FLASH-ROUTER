@@ -1,0 +1,123 @@
+.add-account-modal {
+    max-width: 580px;
+}
+
+.modal-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.modal-form-row {
+    display: flex;
+    gap: 14px;
+}
+
+.flex-1 {
+    flex: 1;
+}
+
+.form-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.label-with-badge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.label-format-badge {
+    font-family: monospace;
+    font-size: 11px;
+    padding: 2px 6px;
+    background: var(--app-elevated);
+    border: 1px solid var(--app-border);
+    border-radius: var(--radius-sm);
+    color: var(--accent-primary);
+    font-weight: 600;
+}
+
+.credential-input-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.modal-input,
+.modal-select,
+.modal-textarea {
+    width: 100%;
+    background: var(--app-input);
+    border: 1px solid var(--app-border);
+    border-radius: var(--radius-md);
+    padding: 9px 12px;
+    color: var(--text-primary);
+    font-size: 13.5px;
+    box-sizing: border-box;
+    transition: all var(--transition-fast);
+}
+
+.modal-input:focus,
+.modal-select:focus,
+.modal-textarea:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--focus-ring);
+    outline: none;
+}
+
+.password-toggle-btn {
+    position: absolute;
+    right: 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px;
+}
+
+.password-toggle-btn:hover {
+    color: var(--text-primary);
+}
+
+.field-help {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.field-help code {
+    background: var(--app-elevated);
+    padding: 1px 4px;
+    border-radius: 4px;
+    color: var(--accent-primary);
+}
+
+.radio-options-row {
+    display: flex;
+    gap: 16px;
+    padding-top: 6px;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.modal-error-banner {
+    background: var(--state-error-bg);
+    border: 1px solid var(--state-error);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    color: var(--state-error);
+    font-size: 13px;
+    margin-bottom: 16px;
+}

@@ -1,0 +1,23 @@
+@page "/backups"
+
+<PageTitle>Backup / Restore | FLASH ROUTER</PageTitle>
+
+<section class="backups-page" aria-labelledby="backups-title">
+    <div class="backups-intro">
+        <p class="backups-eyebrow">RECOVERY</p>
+        <h1 id="backups-title">Backup / Restore</h1>
+        <p class="backups-description">Create encrypted local snapshots and validate recovery on disposable data without mutating the active database.</p>
+    </div>
+
+    <div class="backups-status" role="status">
+        <span class="backups-status-mark" aria-hidden="true"></span>
+        <div>
+            <p class="backups-status-label">BE-06 recovery status</p>
+            <h2>Local backup validation is available</h2>
+            <p>Integrated mode uses SQLite Online Backup and encrypted local payloads. Restore is validated in a disposable workspace; the active database and DPAPI key ring are preserved.</p>
+        </div>
+    </div>
+
+    <a class="backups-action" href="/diagnostics">Read Diagnostics<span aria-hidden="true"> -></span></a>
+</section>
+

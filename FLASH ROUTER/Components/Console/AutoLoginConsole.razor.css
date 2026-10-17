@@ -1,0 +1,160 @@
+/* ==========================================================================
+   FLASH ROUTER — MASTER ACCOUNT MANAGEMENT CONSOLE
+   Full 3-column SaaS dashboard layout matching reference UI screenshot.
+   Conforms to clean modern system typography.
+   ========================================================================== */
+
+.master-app-shell {
+    display: flex;
+    min-height: 100vh;
+    background: var(--app-bg);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    position: relative;
+}
+
+.master-workspace {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--app-bg);
+}
+
+.console-body-layout {
+    display: grid;
+    grid-template-columns: 1fr var(--inspector-width);
+    min-height: calc(100vh - var(--topbar-height));
+    background: var(--app-console);
+    position: relative;
+}
+
+.main-console-content {
+    padding: 28px 32px 48px;
+    background: var(--app-bg);
+    min-width: 0;
+    overflow-y: auto;
+}
+
+/* Page Header matching reference screenshot */
+.console-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.page-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.title-with-badge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.page-title {
+    font-size: var(--font-heading);
+    font-weight: 700;
+    letter-spacing: -0.6px;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1.2;
+}
+
+.console-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    letter-spacing: 0.2px;
+}
+
+.page-subtitle {
+    font-size: 13.5px;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.45;
+    max-width: 650px;
+}
+
+.page-header-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.system-time {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.system-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.status-indicator-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: var(--radius-pill);
+    background: var(--text-muted);
+}
+
+.status-indicator-dot.is-healthy {
+    background: #059669;
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.2);
+}
+
+.status-indicator-dot.is-warning {
+    background: #D97706;
+}
+
+[data-theme="dark"] .status-indicator-dot.is-healthy {
+    background: #34D399;
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.2);
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1400px) {
+    .main-console-content {
+        padding: 24px 20px 40px;
+    }
+}
+
+@media (max-width: 1200px) {
+    .console-body-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .console-page-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .page-header-meta {
+        align-items: flex-start;
+    }
+    .main-console-content {
+        padding: 16px 12px 32px;
+    }
+}

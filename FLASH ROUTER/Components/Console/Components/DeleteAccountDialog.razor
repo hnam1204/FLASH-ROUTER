@@ -1,0 +1,68 @@
+@namespace FLASH_ROUTER.Components.Console.Components
+@using FlashAI.Modules.Accounts.Contracts
+
+@if (IsOpen && Account != null)
+{
+    <div class="flash-overlay-backdrop" @onclick="HandleClose">
+        <div class="flash-modal-card delete-account-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+            <div class="flash-modal-header danger-header">
+                <div class="header-danger-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                </div>
+                <h3 id="delete-account-title" class="flash-modal-title">Xác nhận xóa tài khoản</h3>
+                <button type="button" class="flash-modal-close-btn" @onclick="HandleClose" aria-label="Đóng">✕</button>
+            </div>
+
+            <div class="flash-modal-body">
+                <p class="delete-warning-text">
+                    Bạn có chắc chắn muốn xóa tài khoản <strong>@Account.Email</strong> (@Account.DisplayName) khỏi danh sách quản lý không?
+                </p>
+
+                <div class="impact-notice-box">
+                    <span class="impact-notice-title">Chi tiết phạm vi tác động:</span>
+                    <ul class="impact-list">
+                        <li><strong>Bản ghi tài khoản:</strong> Sẽ bị xóa hoàn toàn khỏi cơ sở dữ liệu SQLite cục bộ.</li>
+                        <li><strong>Credential & Token:</strong> Khóa bí mật trong DPAPI Vault liên kết sẽ được giải phóng.</li>
+                        <li><strong>Hồ sơ trình duyệt:</strong> Browser profile cô lập tương ứng sẽ được dọn dẹp theo chính sách lưu trữ.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flash-modal-footer">
+                <button type="button" class="flash-btn flash-btn-outline" @onclick="HandleClose">Hủy</button>
+                <button type="button" class="flash-btn flash-btn-danger" @onclick="HandleConfirm">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    <span>Xóa tài khoản</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public AccountDetailVm? Account { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<Guid> OnConfirmDelete { get; set; }
+
+    private async Task HandleConfirm()
+    {
+        if (Account != null)
+        {
+            await OnConfirmDelete.InvokeAsync(Account.AccountId);
+        }
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleClose()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

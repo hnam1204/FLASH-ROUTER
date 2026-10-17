@@ -1,0 +1,64 @@
+.delete-account-modal {
+    max-width: 500px;
+}
+
+.danger-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-danger-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-pill);
+    background: var(--state-error-bg);
+    color: var(--state-error);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.delete-warning-text {
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    margin-bottom: 16px;
+}
+
+.impact-notice-box {
+    background: var(--app-surface-secondary);
+    border: 1px solid var(--app-border);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+}
+
+.impact-notice-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 8px;
+}
+
+.impact-list {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.flash-btn-danger {
+    background: var(--state-error);
+    color: #FFFFFF;
+    border: 1px solid var(--state-error);
+}
+
+.flash-btn-danger:hover {
+    background: #B91C1C;
+    border-color: #B91C1C;
+}

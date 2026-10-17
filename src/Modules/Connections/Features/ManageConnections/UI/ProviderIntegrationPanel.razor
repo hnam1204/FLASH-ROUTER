@@ -1,0 +1,52 @@
+@using FlashAI.Modules.Connections.Contracts
+@inject IProviderUiPort ProviderPort
+
+<section class="provider-integration-panel" aria-labelledby="provider-integration-title">
+    <div class="provider-panel-header">
+        <div>
+            <p class="provider-panel-eyebrow">API CONNECTIONS</p>
+            <h2 id="provider-integration-title">Official provider adapters</h2>
+            <p>Each provider reports only the capabilities supported by its official API and credential scope.</p>
+        </div>
+        <span class="provider-panel-status">OFFLINE READY</span>
+    </div>
+
+    @if (_providers is null)
+    {
+        <p class="provider-panel-loading">Đang tải danh mục nhà cung cấp...</p>
+    }
+    else
+    {
+        <div class="provider-adapter-grid">
+            @foreach (var provider in _providers)
+            {
+                <article class="provider-adapter-card @(provider.IsConnectable ? string.Empty : "provider-research-only")" aria-label="@provider.DisplayName">
+                    <div class="provider-adapter-title-row">
+                        <h3>@provider.DisplayName</h3>
+                        <span>@provider.ImplementationState</span>
+                    </div>
+                    <p class="provider-adapter-status">@provider.LiveStatus</p>
+                    <p class="provider-adapter-capability-state">
+                        @(provider.IsConnectable ? "Adapter metadata có thể được dùng cho flow API hiện có." : "Chỉ nghiên cứu metadata; không có nút Connect hoặc adapter giả.")
+                    </p>
+                    <div class="provider-capabilities" aria-label="Supported capabilities">
+                        @foreach (var capability in provider.SupportedCapabilities)
+                        {
+                            <span>@capability</span>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+        <p class="provider-panel-note">Không có API key nào được hiển thị hoặc gửi trong trang này. Kiểm tra live chỉ chạy sau thao tác xác nhận rõ ràng.</p>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<ProviderUiDescriptor>? _providers;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _providers = await ProviderPort.GetProvidersAsync();
+    }
+}

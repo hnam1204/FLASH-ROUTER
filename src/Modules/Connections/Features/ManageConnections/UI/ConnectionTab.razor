@@ -1,0 +1,505 @@
+@using FlashAI.Modules.Connections.Contracts
+@using FlashAI.Modules.Connections.Domain
+@using FlashAI.Modules.Connections.Features.ConnectProvider.Application
+@using FlashAI.Modules.Connections.Features.ProviderIntegration.Abstractions
+@using Microsoft.JSInterop
+@inject IAccountConnectionsReader ConnectionsReader
+@inject IProviderUiPort ProviderPort
+@inject IOfficialOAuthEligibility OAuthEligibility
+@inject FlashAI.Modules.Connections.Integration.IOfficialAuthorizationPort AuthorizationPort
+@inject IJSRuntime JSRuntime
+
+<section class="connection-tab-container" aria-labelledby="connection-list-title" aria-busy="@_loading">
+    <div class="connection-list-heading">
+        <div>
+            <p class="connection-eyebrow">CONNECTION METADATA</p>
+            <h3 id="connection-list-title">Kết nối của tài khoản</h3>
+            <p class="connection-description">Chỉ hiển thị metadata an toàn; secret và token không được đọc vào giao diện.</p>
+        </div>
+        @if (!_loading && !_loadFailed)
+        {
+            <div class="connection-heading-actions">
+                <span class="connection-count">@_connections.Count kết nối</span>
+                @if (!OAuthIsBlocked)
+                {
+                    <button type="button" class="connection-action-button" @onclick="StartOAuthAsync">Bắt đầu OAuth</button>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <div class="connection-state connection-loading" role="status">Đang tải danh sách kết nối...</div>
+    }
+
+    @if (_pendingRequest is not null)
+    {
+        <section class="oauth-pending-panel" aria-labelledby="oauth-pending-title">
+            <div>
+                <p class="connection-eyebrow">OFFICIAL OAUTH</p>
+                <h4 id="oauth-pending-title">Đang chờ xác thực trong trình duyệt</h4>
+                <p>Authorization URL được tạo mới cho attempt này. Không dùng liên kết Codex CLI hoặc callback của ứng dụng khác.</p>
+            </div>
+            <div class="oauth-pending-actions">
+                <button type="button" class="connection-action-button" @onclick="OpenAuthorizationUrl">Mở trang đăng nhập</button>
+                <button type="button" class="connection-action-button secondary" @onclick="CopyAuthorizationUrl">Sao chép liên kết</button>
+                <button type="button" class="connection-action-button secondary" @onclick="CancelOAuthAsync">Hủy</button>
+            </div>
+            <div class="oauth-callback-field">
+                <label for="manual-oauth-callback">Callback URL thủ công</label>
+                <textarea id="manual-oauth-callback" rows="3" @bind="_manualCallback" placeholder="http://127.0.0.1:1455/auth/callback?..." @bind:event="oninput"></textarea>
+                <button type="button" class="connection-action-button" @onclick="HandleManualCallbackAsync">Dán callback</button>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(_oauthMessage))
+            {
+                <p class="oauth-inline-message" role="status">@_oauthMessage</p>
+            }
+        </section>
+    }
+    else if (_loadFailed)
+    {
+        <div class="connection-state connection-error" role="alert">
+            <strong>Không thể tải danh sách kết nối</strong>
+            <span>Thông tin tài khoản vẫn an toàn. Hãy thử tải lại danh sách.</span>
+            <button type="button" class="connection-retry" @onclick="ReloadAsync">Thử lại</button>
+        </div>
+    }
+    else if (_connections.Count == 0)
+    {
+        <div class="connection-state connection-empty">
+            <span class="connection-empty-mark" aria-hidden="true">+</span>
+            <strong>Chưa có kết nối</strong>
+            <span>Tài khoản này chưa được kết nối với nhà cung cấp.</span>
+        </div>
+    }
+    else
+    {
+        <div class="connection-list" role="list">
+            @foreach (var connection in _connections)
+            {
+                <article class="connection-card" role="listitem">
+                    <div class="connection-card-header">
+                        <div class="provider-info">
+                            <div class="provider-icon-large" aria-hidden="true">@GetProviderInitials(connection.ProviderDisplayName)</div>
+                            <div>
+                                <h4 class="provider-title">@connection.ProviderDisplayName</h4>
+                                <p class="provider-sub">@GetConnectionKindLabel(connection.ConnectionKind) · @GetProvenanceLabel(connection.Provenance)</p>
+                            </div>
+                        </div>
+                        <span class="connection-badge @GetStatusClass(connection.Status)">
+                            <span class="badge-dot"></span>
+                            @GetStatusLabel(connection.Status)
+                        </span>
+                    </div>
+
+                    <div class="connection-details-grid">
+                        <div class="detail-row">
+                            <span class="detail-label">@GetIdentityTitle(connection)</span>
+                            <span class="detail-value mono">@GetIdentityLabel(connection)</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Thông tin xác thực</span>
+                            <span class="detail-value">@GetCredentialLabel(connection)</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Ủy quyền / tạo lúc</span>
+                            <span class="detail-value">@FormatDate(connection.AuthorizedAtUtc ?? connection.CreatedAtUtc)</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Xác minh gần nhất</span>
+                            <span class="detail-value">@FormatDate(connection.LastVerifiedAtUtc ?? connection.LastCheckedAtUtc)</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(connection.Scope))
+                        {
+                            <div class="detail-row">
+                                <span class="detail-label">Scope / workspace</span>
+                                <span class="detail-value">@connection.Scope</span>
+                            </div>
+                        }
+                        @if (connection.GrantedScopes.Count > 0)
+                        {
+                            <div class="detail-row detail-row-scopes">
+                                <span class="detail-label">Scopes đã cấp</span>
+                                <span class="detail-value">@string.Join(", ", connection.GrantedScopes)</span>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="connection-card-note @GetNoteClass(connection)">
+                        @GetConnectionNote(connection)
+                    </div>
+                    @if (CanCheck(connection))
+                    {
+                        <div class="connection-card-actions">
+                            <button type="button"
+                                    class="connection-action-button"
+                                    disabled="@(_checkingConnectionId == connection.ConnectionId)"
+                                    @onclick="() => CheckConnectionAsync(connection)">
+                                @(_checkingConnectionId == connection.ConnectionId ? "Đang kiểm tra..." : "Kiểm tra ngay")
+                            </button>
+                            <span class="connection-action-hint">Chỉ đọc official API; không chạy inference.</span>
+                        </div>
+                    }
+                    @if (_checkMessages.TryGetValue(connection.ConnectionId, out var checkMessage))
+                    {
+                        <p class="oauth-inline-message" role="status">@checkMessage</p>
+                    }
+                </article>
+            }
+        </div>
+    }
+
+    @if (!_loading && OAuthIsBlocked)
+    {
+        <div class="oauth-blocked-note" role="status">
+            <strong>Kết nối OAuth chưa khả dụng</strong>
+            <span>@OAuthEligibility.StatusMessage</span>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    [Parameter] public EventCallback<string> OnNotify { get; set; }
+
+    private IReadOnlyList<AccountConnectionSummary> _connections = [];
+    private CancellationTokenSource? _loadCts;
+    private bool _loading = true;
+    private bool _loadFailed;
+    private OAuthAuthorizationRequest? _pendingRequest;
+    private string _manualCallback = string.Empty;
+    private string? _oauthMessage;
+    private IReadOnlyList<ProviderUiDescriptor> _providers = [];
+    private readonly Dictionary<Guid, string> _checkMessages = [];
+    private Guid? _checkingConnectionId;
+
+    private bool OAuthIsBlocked
+        => !OAuthEligibility.IsConfirmedForThisApplication;
+
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = new CancellationTokenSource();
+        var cancellationToken = _loadCts.Token;
+        _loading = true;
+        _loadFailed = false;
+
+        try
+        {
+            _connections = await ConnectionsReader.ListForAccountAsync(AccountId, cancellationToken);
+            try
+            {
+                _providers = await ProviderPort.GetProvidersAsync(cancellationToken);
+            }
+            catch
+            {
+                _providers = [];
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch
+        {
+            _connections = [];
+            _loadFailed = true;
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private bool CanCheck(AccountConnectionSummary connection)
+        => connection.ConnectionKind is ConnectionKind.ApiKey or ConnectionKind.AdminApiKey
+            && FindProvider(connection.ProviderId) is { IsConnectable: true } provider
+            && provider.SupportedCapabilities.Count > 0;
+
+    private ProviderUiDescriptor? FindProvider(string providerId)
+        => _providers.SingleOrDefault(provider => provider.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
+
+    private async Task CheckConnectionAsync(AccountConnectionSummary connection)
+    {
+        if (_checkingConnectionId is not null || !CanCheck(connection))
+        {
+            return;
+        }
+
+        var descriptor = FindProvider(connection.ProviderId);
+        if (descriptor is null)
+        {
+            return;
+        }
+
+        var capabilities = descriptor.SupportedCapabilities
+            .Select(value => Enum.TryParse<ProviderCapability>(value, ignoreCase: true, out var capability) ? capability : (ProviderCapability?)null)
+            .Where(value => value is not null)
+            .Select(value => value!.Value)
+            .Where(value => value is not ProviderCapability.Costs and not ProviderCapability.BillingPeriod)
+            .ToHashSet();
+
+        _checkingConnectionId = connection.ConnectionId;
+        _checkMessages.Remove(connection.ConnectionId);
+        try
+        {
+            var result = await ProviderPort.CheckConnectionAsync(
+                connection.ConnectionId,
+                capabilities,
+                allowBillableRead: true);
+            _checkMessages[connection.ConnectionId] = result.Status == ProviderOperationStatus.Success
+                ? $"Đã kiểm tra dữ liệu official lúc {result.CompletedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}."
+                : string.IsNullOrWhiteSpace(result.SafeUserMessage)
+                    ? result.SafeErrorCode
+                    : result.SafeUserMessage;
+            await OnNotify.InvokeAsync(_checkMessages[connection.ConnectionId]);
+        }
+        catch (OperationCanceledException)
+        {
+            _checkMessages[connection.ConnectionId] = "Đã hủy kiểm tra provider.";
+        }
+        catch
+        {
+            _checkMessages[connection.ConnectionId] = "Không thể hoàn tất kiểm tra provider; dữ liệu cũ được giữ nguyên.";
+        }
+        finally
+        {
+            _checkingConnectionId = null;
+        }
+    }
+
+    private async Task StartOAuthAsync()
+    {
+        _oauthMessage = null;
+        var result = await AuthorizationPort.StartAsync(AccountId);
+        if (!result.IsSuccess || result.Value is null)
+        {
+            _oauthMessage = result.ErrorMessage ?? "Không thể bắt đầu OAuth chính thức.";
+            return;
+        }
+
+        _pendingRequest = result.Value;
+        _manualCallback = string.Empty;
+        _oauthMessage = $"Attempt có hiệu lực đến {_pendingRequest.ExpiresAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}.";
+    }
+
+    private void OpenAuthorizationUrl()
+    {
+        if (_pendingRequest is null)
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = _pendingRequest.AuthorizationUri,
+                UseShellExecute = true
+            });
+            _oauthMessage = "Đã mở URL chính thức. Chưa được coi là Authorized cho tới khi callback được xác minh.";
+        }
+        catch
+        {
+            _oauthMessage = "Không mở được trình duyệt OAuth. Bạn có thể sao chép liên kết để mở thủ công.";
+        }
+    }
+
+    private async Task CopyAuthorizationUrl()
+    {
+        if (_pendingRequest is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("flashRouter.copyToClipboard", _pendingRequest.AuthorizationUri);
+            _oauthMessage = "Đã sao chép liên kết OAuth. Không ghi liên kết này vào log.";
+        }
+        catch
+        {
+            _oauthMessage = "Không thể sao chép liên kết OAuth.";
+        }
+    }
+
+    private async Task HandleManualCallbackAsync()
+    {
+        if (_pendingRequest is null)
+        {
+            _oauthMessage = "Không có OAuth attempt đang chờ.";
+            return;
+        }
+
+        if (!TryParseCallback(_manualCallback, _pendingRequest.RedirectUri, out var callback, out var error))
+        {
+            _oauthMessage = error;
+            return;
+        }
+
+        var result = await AuthorizationPort.HandleCallbackAsync(_pendingRequest.AttemptId, callback!);
+        _pendingRequest = null;
+        _manualCallback = string.Empty;
+        _oauthMessage = result.SafeMessage ?? (result.IsSuccess ? "OAuth đã hoàn tất." : "OAuth chưa hoàn tất.");
+        await ReloadAsync();
+    }
+
+    private async Task CancelOAuthAsync()
+    {
+        _pendingRequest = null;
+        _manualCallback = string.Empty;
+        _oauthMessage = "OAuth attempt đã được đóng ở giao diện này.";
+        await Task.CompletedTask;
+    }
+
+    private static bool TryParseCallback(
+        string raw,
+        string expectedRedirectUri,
+        out OAuthCallbackInput? callback,
+        out string error)
+    {
+        callback = null;
+        error = string.Empty;
+        if (!Uri.TryCreate(raw?.Trim(), UriKind.Absolute, out var uri)
+            || !Uri.TryCreate(expectedRedirectUri, UriKind.Absolute, out var expected)
+            || uri.Scheme != expected.Scheme
+            || !uri.Host.Equals(expected.Host, StringComparison.OrdinalIgnoreCase)
+            || uri.Port != expected.Port
+            || uri.AbsolutePath != expected.AbsolutePath
+            || !LoopbackCallbackUri.IsValid(uri.GetLeftPart(UriPartial.Path)))
+        {
+            error = "Callback phải khớp chính xác loopback redirect URI của attempt hiện tại.";
+            return false;
+        }
+
+        var values = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        callback = new OAuthCallbackInput(
+            GetQueryValue(values, "code"),
+            GetQueryValue(values, "state"),
+            GetQueryValue(values, "error"),
+            GetQueryValue(values, "error_description"),
+            GetQueryValue(values, "client_id"),
+            GetQueryValue(values, "scope"));
+        return true;
+    }
+
+    private static string? GetQueryValue(Dictionary<string, Microsoft.Extensions.Primitives.StringValues> values, string key)
+        => values.TryGetValue(key, out var value) ? value.ToString() : null;
+
+    private static string GetProviderInitials(string providerName)
+    {
+        var words = providerName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return words.Length switch
+        {
+            0 => "AI",
+            1 => providerName[..Math.Min(2, providerName.Length)].ToUpperInvariant(),
+            _ => string.Concat(words.Take(2).Select(word => char.ToUpperInvariant(word[0])))
+        };
+    }
+
+    private static string GetConnectionKindLabel(ConnectionKind kind)
+        => kind switch
+        {
+            ConnectionKind.WebOAuth => "OAuth chính thức",
+            ConnectionKind.ApiKey => "API key",
+            ConnectionKind.AdminApiKey => "Admin API key",
+            _ => "Credential web thủ công"
+        };
+
+    private static string GetProvenanceLabel(ConnectionProvenance provenance)
+        => provenance switch
+        {
+            ConnectionProvenance.OfficialOAuth => "Official OAuth",
+            ConnectionProvenance.ProviderApiCredential => "Provider API",
+            _ => "Người dùng cung cấp"
+        };
+
+    private static string GetStatusLabel(ConnectionStatus status)
+        => status switch
+        {
+            ConnectionStatus.Authorized => "Đã cấp quyền",
+            ConnectionStatus.CredentialStored => "Đã lưu credential",
+            ConnectionStatus.NeedsReauthorization => "Cần xác thực lại",
+            ConnectionStatus.Disconnected => "Đã ngắt kết nối",
+            ConnectionStatus.Revoked => "Đã thu hồi",
+            ConnectionStatus.Pending => "Đang chờ",
+            ConnectionStatus.Unauthorized or ConnectionStatus.AuthorizationRequired => "Chưa được cấp quyền",
+            ConnectionStatus.Error or ConnectionStatus.NetworkError => "Lỗi kết nối",
+            _ => "Chưa xác minh"
+        };
+
+    private static string GetStatusClass(ConnectionStatus status)
+        => status switch
+        {
+            ConnectionStatus.Authorized => "status-connected",
+            ConnectionStatus.CredentialStored => "status-stored",
+            ConnectionStatus.NeedsReauthorization => "status-warning",
+            ConnectionStatus.Disconnected or ConnectionStatus.Revoked => "status-disabled",
+            ConnectionStatus.Error or ConnectionStatus.NetworkError => "status-error",
+            _ => "status-pending"
+        };
+
+    private static string GetIdentityTitle(AccountConnectionSummary connection)
+        => connection.ConnectionKind == ConnectionKind.Manual
+            ? "Email đã lưu"
+            : "Danh tính đã xác minh";
+
+    private static string GetIdentityLabel(AccountConnectionSummary connection)
+    {
+        var identity = connection.ConnectionKind == ConnectionKind.Manual
+            ? connection.UserProvidedIdentity
+            : connection.VerifiedIdentity;
+        if (string.IsNullOrWhiteSpace(identity))
+        {
+            return connection.ConnectionKind == ConnectionKind.Manual
+                ? "Chưa có email đã lưu"
+                : "Chưa có danh tính đã xác minh";
+        }
+
+        return identity.Length <= 6
+            ? "***"
+            : $"{identity[..Math.Min(3, identity.Length)]}***{identity[^Math.Min(3, identity.Length)..]}";
+    }
+
+    private static string GetCredentialLabel(AccountConnectionSummary connection)
+        => connection.CredentialAvailability switch
+        {
+            ConnectionCredentialAvailability.StoredReference => connection.ConnectionKind == ConnectionKind.WebOAuth
+                ? "Đã lưu trong Vault"
+                : connection.ConnectionKind == ConnectionKind.Manual
+                    ? "Đã lưu trong Vault · Credential web"
+                : $"Đã mã hóa trong Vault · {connection.CredentialKind?.ToString() ?? "credential"}",
+            ConnectionCredentialAvailability.MissingReference => "Thiếu tham chiếu an toàn",
+            _ => "Không áp dụng"
+        };
+
+    private static string GetConnectionNote(AccountConnectionSummary connection)
+        => connection.Status switch
+        {
+            ConnectionStatus.CredentialStored => "Đã lưu thông tin đăng nhập · Chưa xác minh phiên kết nối.",
+            ConnectionStatus.Authorized => "Danh tính được xác minh từ metadata kết nối chính thức.",
+            ConnectionStatus.Disconnected => "Kết nối lịch sử đã ngắt; metadata vẫn được giữ để đối soát.",
+            ConnectionStatus.Revoked => "Kết nối đã bị thu hồi tại provider.",
+            ConnectionStatus.NeedsReauthorization => "Cần cấp quyền lại trước khi sử dụng.",
+            _ => "Chưa có xác minh live cho kết nối này."
+        };
+
+    private static string GetNoteClass(AccountConnectionSummary connection)
+        => connection.Status switch
+        {
+            ConnectionStatus.Authorized => "note-success",
+            ConnectionStatus.CredentialStored => "note-warning",
+            ConnectionStatus.Error or ConnectionStatus.NetworkError => "note-error",
+            _ => "note-neutral"
+        };
+
+    private static string FormatDate(DateTimeOffset? value)
+        => value?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Chưa ghi nhận";
+}

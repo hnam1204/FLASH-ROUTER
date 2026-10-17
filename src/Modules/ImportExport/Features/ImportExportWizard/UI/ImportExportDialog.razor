@@ -1,0 +1,205 @@
+@using FlashAI.Modules.ImportExport.Contracts
+@inject IImportExportUiPort ImportExportPort
+
+<div class="flash-overlay-backdrop" @onclick="HandleClose">
+    <div class="flash-modal-card import-modal-card" @onclick:stopPropagation="true">
+        <div class="flash-modal-header">
+            <div class="modal-tab-toggles">
+                <button type="button" class="tab-toggle-btn @(_mode == "import" ? "active" : "")" @onclick='() => _mode = "import"'>
+                    Nhập dữ liệu (CSV)
+                </button>
+                <button type="button" class="tab-toggle-btn @(_mode == "export" ? "active" : "")" @onclick='() => _mode = "export"'>
+                    Xuất danh sách
+                </button>
+            </div>
+            <button type="button" class="flash-modal-close-btn" @onclick="HandleClose">✕</button>
+        </div>
+
+        <div class="flash-modal-body">
+            @if (_mode == "import")
+            {
+                <div class="import-section">
+                    <p class="section-desc">Dán CSV metadata theo định dạng <code>email,ten,nha_cung_cap,goi,tag_legacy</code>. Mật khẩu và TOTP không được nhập qua CSV metadata.</p>
+
+                    <div class="file-drop-area">
+                        <textarea class="csv-input-area"
+                                  rows="4"
+                                  placeholder="Ví dụ:&#10;you@example.com,Tài khoản cá nhân,openai,Chưa rõ"
+                                  @bind="_csvContent"></textarea>
+                    </div>
+
+                    <div class="parse-actions">
+                        <button type="button" class="btn-parse-csv" @onclick="ParseContent">
+                            Kiểm tra và xem trước dữ liệu
+                        </button>
+                    </div>
+
+                    @if (_preview != null)
+                    {
+                        <div class="preview-results-box">
+                            <div class="preview-summary-bar">
+                                <span class="summary-stat">Tổng: <strong>@_preview.TotalRows</strong></span>
+                                <span class="summary-stat text-success">Hợp lệ: <strong>@_preview.ValidRows</strong></span>
+                                @if (_preview.ErrorRows > 0)
+                                {
+                                    <span class="summary-stat text-danger">Lỗi: <strong>@_preview.ErrorRows</strong></span>
+                                }
+                            </div>
+
+                            <div class="preview-table-container">
+                                <table class="preview-table">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Email</th>
+                                            <th>Tên hiển thị</th>
+                                            <th>Gói</th>
+                                            <th>Trạng thái</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var r in _preview.PreviewRows)
+                                        {
+                                            <tr class="@(r.IsValid ? "" : "row-error")">
+                                                <td>@r.RowIndex</td>
+                                                <td>@r.Email</td>
+                                                <td>@r.DisplayName</td>
+                                                <td>@r.Plan</td>
+                                                <td>
+                                                    @if (r.IsValid)
+                                                    {
+                                                        <span class="badge-valid">Hợp lệ</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge-invalid" title="@r.ValidationError">@r.ValidationError</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="conflict-selection">
+                                <label>Xử lý trùng lặp:</label>
+                                <select class="conflict-select" @bind="_conflictStrategy">
+                                    <option value="skip">Bỏ qua tài khoản đã tồn tại</option>
+                                    <option value="overwrite">Cập nhật tài khoản trùng</option>
+                                </select>
+                            </div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_resultNotice))
+                    {
+                        <div class="import-notice-banner @(_isError ? "error" : "success")">
+                            @_resultNotice
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="export-section">
+                    <p class="section-desc">Xuất dữ liệu an toàn. FLASH ROUTER cam kết không xuất thông tin mật khẩu, tokens phiên làm việc hoặc mã hạt giống 2FA.</p>
+
+                    <div class="export-options-list">
+                        <label class="export-checkbox-row">
+                            <input type="checkbox" @bind="_exportOptions.IncludePlan" />
+                            <span>Bao gồm gói sử dụng ghi nhận</span>
+                        </label>
+                        <label class="export-checkbox-row">
+                            <input type="checkbox" @bind="_exportOptions.IncludeNotes" />
+                            <span>Bao gồm ghi chú tài khoản</span>
+                        </label>
+                        <label class="export-checkbox-row">
+                            <input type="checkbox" @bind="_exportOptions.IncludeDates" />
+                            <span>Bao gồm ngày theo dõi đến hạn</span>
+                        </label>
+                    </div>
+
+                    <div class="export-preview-box">
+                        <label class="export-preview-label">Xem trước nội dung xuất (CSV):</label>
+                        <textarea class="export-textarea" rows="6" readonly value="@_exportedContent"></textarea>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="flash-modal-footer">
+            <button type="button" class="btn-dialog-ghost" @onclick="HandleClose">Đóng</button>
+            @if (_mode == "import")
+            {
+                <button type="button"
+                        class="btn-dialog-primary"
+                        disabled="@(_preview == null || _preview.ValidRows == 0)"
+                        @onclick="CommitImport">
+                    Xác nhận nhập dữ liệu
+                </button>
+            }
+            else
+            {
+                <button type="button" class="btn-dialog-primary" @onclick="DownloadExport">
+                    Sao chép nội dung xuất
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string InitialMode { get; set; } = "import";
+    [Parameter] public EventCallback OnClosed { get; set; }
+    [Parameter] public EventCallback<string> OnNotify { get; set; }
+
+    private string _mode = "import";
+    private string _csvContent = string.Empty;
+    private ImportPreviewResultVm? _preview;
+    private string _conflictStrategy = "skip";
+    private string? _resultNotice;
+    private bool _isError;
+
+    private ExportOptionsVm _exportOptions = new() { IncludeTags = false };
+    private string _exportedContent = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _mode = InitialMode;
+        _exportedContent = await ImportExportPort.GenerateExportContentAsync(_exportOptions);
+    }
+
+    private async Task ParseContent()
+    {
+        _resultNotice = null;
+        if (string.IsNullOrWhiteSpace(_csvContent))
+        {
+            _resultNotice = "Vui lòng nhập CSV trước khi xem trước.";
+            _isError = true;
+            return;
+        }
+
+        _preview = await ImportExportPort.ParseAndPreviewCsvAsync("paste-input.csv", _csvContent);
+    }
+
+    private async Task CommitImport()
+    {
+        if (_preview == null) return;
+
+        var res = await ImportExportPort.CommitImportAsync(_preview, _conflictStrategy);
+        _resultNotice = res.Message;
+        _isError = !res.IsSuccess;
+        await OnNotify.InvokeAsync(res.Message);
+    }
+
+    private async Task DownloadExport()
+    {
+        _exportedContent = await ImportExportPort.GenerateExportContentAsync(_exportOptions);
+        await OnNotify.InvokeAsync("Đã sao chép nội dung xuất dữ liệu an toàn vào bộ nhớ tạm.");
+    }
+
+    private async Task HandleClose()
+    {
+        await OnClosed.InvokeAsync();
+    }
+}

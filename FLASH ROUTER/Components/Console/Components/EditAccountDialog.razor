@@ -1,0 +1,107 @@
+@namespace FLASH_ROUTER.Components.Console.Components
+@using FlashAI.Modules.Accounts.Contracts
+
+@if (IsOpen && Account != null)
+{
+    <div class="flash-overlay-backdrop" @onclick="HandleClose">
+        <div class="flash-modal-card edit-account-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="edit-account-title">
+            <div class="flash-modal-header">
+                <h3 id="edit-account-title" class="flash-modal-title">Sửa thông tin tài khoản</h3>
+                <button type="button" class="flash-modal-close-btn" @onclick="HandleClose" aria-label="Đóng">✕</button>
+            </div>
+
+            <div class="flash-modal-body">
+                <!-- Email (Read-only) -->
+                <div class="modal-form-group">
+                    <label class="form-label" for="edit-email">Email tài khoản</label>
+                    <input id="edit-email" type="email" class="modal-input readonly-input" value="@Account.Email" readonly disabled />
+                </div>
+
+                <div class="modal-form-row">
+                    <!-- Display Name -->
+                    <div class="modal-form-group flex-1">
+                        <label class="form-label" for="edit-display-name">Tên hiển thị</label>
+                        <input id="edit-display-name" type="text" class="modal-input" @bind="_displayName" />
+                    </div>
+
+                    <!-- Plan -->
+                    <div class="modal-form-group flex-1">
+                        <label class="form-label" for="edit-plan">Gói tài khoản</label>
+                        <input id="edit-plan" type="text" class="modal-input" @bind="_plan" />
+                    </div>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-form-group">
+                    <label class="form-label" for="edit-status">Trạng thái</label>
+                    <select id="edit-status" class="modal-select" @bind="_status">
+                        <option value="Connected">Đang hoạt động (Connected)</option>
+                        <option value="Unverified">Cần xác minh (Unverified)</option>
+                        <option value="ReauthNeeded">Hết phiên (ReauthNeeded)</option>
+                        <option value="ConnectionError">Đã lỗi (ConnectionError)</option>
+                    </select>
+                </div>
+
+                <!-- Notes -->
+                <div class="modal-form-group">
+                    <label class="form-label" for="edit-notes">Ghi chú</label>
+                    <textarea id="edit-notes" class="modal-textarea" rows="3" @bind="_notes"></textarea>
+                </div>
+            </div>
+
+            <div class="flash-modal-footer">
+                <button type="button" class="flash-btn flash-btn-outline" @onclick="HandleClose">Hủy</button>
+                <button type="button" class="flash-btn flash-btn-primary" @onclick="HandleSave">Cập nhật</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public AccountDetailVm? Account { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<(Guid Id, AccountEditorVm Model)> OnSave { get; set; }
+
+    private string _displayName = "";
+    private string _plan = "";
+    private string _status = "Connected";
+    private string _notes = "";
+    private Guid? _lastLoadedId;
+
+    protected override void OnParametersSet()
+    {
+        if (Account != null && Account.AccountId != _lastLoadedId)
+        {
+            _lastLoadedId = Account.AccountId;
+            _displayName = Account.DisplayName;
+            _plan = Account.RecordedPlan;
+            _status = Account.Status;
+            _notes = Account.Notes ?? "";
+        }
+    }
+
+    private async Task HandleSave()
+    {
+        if (Account == null) return;
+
+        var model = new AccountEditorVm
+        {
+            Email = Account.Email,
+            DisplayName = string.IsNullOrWhiteSpace(_displayName) ? Account.DisplayName : _displayName.Trim(),
+            Provider = Account.Provider,
+            RecordedPlan = string.IsNullOrWhiteSpace(_plan) ? Account.RecordedPlan : _plan.Trim(),
+            Status = _status,
+            Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes.Trim(),
+            Tags = Account.Tags?.ToList() ?? new List<string>()
+        };
+
+        await OnSave.InvokeAsync((Account.AccountId, model));
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleClose()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

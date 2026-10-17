@@ -1,0 +1,122 @@
+.provider-integration-panel {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border-subtle, #d9e0e8);
+    border-radius: 1.25rem;
+    background: var(--surface-raised, #ffffff);
+}
+
+.provider-panel-header,
+.provider-adapter-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.provider-panel-eyebrow {
+    margin: 0 0 .35rem;
+    color: var(--accent, #147d63);
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .12em;
+}
+
+.provider-panel-header h2,
+.provider-adapter-card h3 {
+    margin: 0;
+}
+
+.provider-panel-header p,
+.provider-adapter-card p {
+    margin: .4rem 0 0;
+    color: var(--text-muted, #687384);
+}
+
+.provider-panel-status,
+.provider-adapter-title-row span {
+    border-radius: 999px;
+    padding: .35rem .65rem;
+    color: #126b55;
+    background: #e4f6ee;
+    font-size: .7rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    white-space: nowrap;
+}
+
+.provider-adapter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: .8rem;
+    margin-top: 1.25rem;
+}
+
+.provider-adapter-card {
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid var(--border-subtle, #d9e0e8);
+    border-radius: .95rem;
+}
+
+.provider-adapter-title-row h3 {
+    font-size: .98rem;
+}
+
+.provider-adapter-title-row span {
+    color: #536171;
+    background: #eef2f6;
+    font-size: .65rem;
+}
+
+.provider-adapter-status {
+    min-height: 2.5rem;
+    font-size: .78rem;
+}
+
+.provider-adapter-capability-state {
+    min-height: 2.2rem;
+    font-size: .72rem;
+}
+
+.provider-research-only {
+    background: var(--surface-soft, #f7f8fa);
+}
+
+.provider-research-only .provider-adapter-title-row span {
+    color: #8a5a00;
+    background: #fff4cc;
+}
+
+.provider-capabilities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    margin-top: .8rem;
+}
+
+.provider-capabilities span {
+    padding: .28rem .45rem;
+    border-radius: .4rem;
+    color: var(--text-muted, #687384);
+    background: var(--surface-soft, #f3f6f9);
+    font-size: .68rem;
+}
+
+.provider-panel-note,
+.provider-panel-loading {
+    margin: 1rem 0 0;
+    color: var(--text-muted, #687384);
+    font-size: .78rem;
+}
+
+@media (max-width: 640px) {
+    .provider-panel-header {
+        display: block;
+    }
+
+    .provider-panel-status {
+        display: inline-block;
+        margin-top: .75rem;
+    }
+}

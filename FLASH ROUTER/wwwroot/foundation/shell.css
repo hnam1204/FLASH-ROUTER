@@ -1,0 +1,207 @@
+/* ==========================================================================
+   FLASH ROUTER — MASTER SHELL & UTILITIES
+   Base shell layout, modal overlays, drawers and animations.
+   ========================================================================== */
+
+.flash-app-wrapper {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--app-bg);
+    color: var(--text-primary);
+    overflow-x: hidden;
+}
+
+.flash-content-container {
+    width: 100%;
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Modal and Drawer Primitives */
+.flash-overlay-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--flash-overlay-backdrop);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1050;
+    padding: 16px;
+    animation: flash-fade-in var(--transition-fast) ease-out;
+}
+
+.flash-modal-card {
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: flash-scale-in var(--transition-normal) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flash-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--app-border);
+    background: var(--app-surface);
+}
+
+.flash-modal-title {
+    font-size: var(--font-md);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.flash-modal-close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-pill);
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.flash-modal-close-btn:hover {
+    background: var(--hover);
+    color: var(--text-primary);
+}
+
+.flash-modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+    color: var(--text-primary);
+}
+
+.flash-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--app-border);
+    background: var(--app-surface-secondary);
+}
+
+/* Animations */
+@keyframes flash-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes flash-scale-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes flash-drawer-slide-in {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes flash-pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.45;
+        transform: scale(0.85);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .flash-overlay-backdrop,
+    .flash-modal-card {
+        animation: none;
+    }
+}
+
+/* Base interactive elements */
+.flash-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: 500;
+    font-size: var(--font-sm);
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.flash-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.flash-btn-primary {
+    background: var(--accent-primary);
+    color: #FFFFFF;
+    border-color: var(--accent-primary);
+}
+
+.flash-btn-primary:hover:not(:disabled) {
+    background: var(--accent-primary-hover);
+    border-color: var(--accent-primary-hover);
+}
+
+.flash-btn-outline {
+    background: var(--app-surface);
+    color: var(--text-primary);
+    border-color: var(--app-border);
+}
+
+.flash-btn-outline:hover:not(:disabled) {
+    background: var(--hover);
+    border-color: var(--app-border-strong);
+}
+
+.flash-btn-danger-outline {
+    background: transparent;
+    color: var(--state-error);
+    border-color: var(--state-error);
+}
+
+.flash-btn-danger-outline:hover:not(:disabled) {
+    background: var(--state-error-bg);
+}
+
+/* Accessibility focus ring */
+:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}

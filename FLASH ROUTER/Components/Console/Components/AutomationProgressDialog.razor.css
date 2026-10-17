@@ -1,0 +1,103 @@
+.automation-progress-modal {
+    max-width: 480px;
+}
+
+.automation-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.status-indicator-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius-pill);
+    background: var(--text-muted);
+}
+
+.status-indicator-dot.is-pulsing {
+    background: var(--accent-primary);
+    box-shadow: 0 0 0 4px var(--accent-primary-glow);
+    animation: flash-pulse 1.2s infinite ease-in-out;
+}
+
+.status-indicator-dot.is-success {
+    background: var(--state-success);
+}
+
+.status-indicator-dot.is-failed {
+    background: var(--state-error);
+}
+
+.progress-status-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+    padding: 10px 4px;
+}
+
+.progress-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--app-border);
+    border-top-color: var(--accent-primary);
+    border-radius: var(--radius-pill);
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+.progress-success-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-pill);
+    background: var(--state-success-bg);
+    color: var(--state-success);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.progress-error-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-pill);
+    background: var(--state-error-bg);
+    color: var(--state-error);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.progress-message-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stage-tag {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--accent-primary);
+}
+
+.status-main-message {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1.4;
+}
+
+.technical-detail {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

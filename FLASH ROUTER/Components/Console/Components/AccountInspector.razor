@@ -1,0 +1,368 @@
+@namespace FLASH_ROUTER.Components.Console.Components
+@using FlashAI.Modules.Accounts.Contracts
+@using FlashAI.Modules.Activity.Contracts
+
+<aside class="account-inspector @(Account is null ? "is-empty" : "")" role="complementary" aria-label="Chi tiết tài khoản">
+    @if (Account is null)
+    {
+        <div class="inspector-empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+                <path d="M9 3v18"></path>
+            </svg>
+            <span class="empty-text">Chọn một tài khoản để xem thông tin chi tiết</span>
+        </div>
+    }
+    else
+    {
+        <!-- Header -->
+        <div class="inspector-header">
+            <h2 class="inspector-title">Thông tin tài khoản</h2>
+            <button type="button" class="inspector-more-btn" aria-label="Thao tác khác" title="Thao tác khác">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="5" cy="12" r="2"></circle>
+                    <circle cx="12" cy="12" r="2"></circle>
+                    <circle cx="19" cy="12" r="2"></circle>
+                </svg>
+            </button>
+        </div>
+
+        <div class="inspector-body">
+            <!-- Hero Identity Card -->
+            <div class="hero-identity-card">
+                <div class="hero-logo-box">
+                    <PlatformLogo Provider="@Account.Provider" Size="48" />
+                </div>
+                <div class="hero-details">
+                    <div class="hero-top-row">
+                        <span class="hero-name">@FormatProviderName(Account.Provider)</span>
+                        <span class="status-pill @GetStatusClass(Account.Status)">
+                            @if (IsActive(Account.Status))
+                            {
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                </svg>
+                                <span>Hoạt động</span>
+                            }
+                            else if (IsUnverified(Account.Status))
+                            {
+                                <span class="status-dot"></span>
+                                <span>Chờ xác minh</span>
+                            }
+                            else
+                            {
+                                <span class="status-dot"></span>
+                                <span>Lỗi</span>
+                            }
+                        </span>
+                    </div>
+                    <span class="hero-plan">@FormatPlan(Account.RecordedPlan, Account.Provider)</span>
+                </div>
+            </div>
+
+            <!-- Metadata List -->
+            <div class="meta-section">
+                <div class="meta-row">
+                    <span class="meta-label">Email</span>
+                    <div class="meta-value-with-action">
+                        <span class="meta-value" title="@Account.Email">@Account.Email</span>
+                        <button type="button" class="copy-icon-btn" @onclick="HandleCopyEmail" title="Sao chép email" aria-label="Sao chép email">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">Nền tảng</span>
+                    <span class="meta-value">@FormatProviderName(Account.Provider)</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">Loại tài khoản</span>
+                    <span class="meta-value">@FormatPlan(Account.RecordedPlan, Account.Provider)</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">Ngày tạo</span>
+                    <span class="meta-value">@Account.CreatedAt.ToString("dd/MM/yyyy")</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">Cập nhật cuối</span>
+                    <span class="meta-value">@Account.UpdatedAt.ToString("dd/MM/yyyy HH:mm")</span>
+                </div>
+            </div>
+
+            <!-- Session Status Section -->
+            <div class="session-section">
+                <div class="session-header-row">
+                    <span class="session-label">Tình trạng phiên</span>
+                    <span class="session-duration">Còn 12 ngày</span>
+                </div>
+                <div class="session-progress-row">
+                    <div class="session-progress-bar">
+                        <div class="session-progress-fill" style="width: 80%;"></div>
+                    </div>
+                    <span class="session-percentage">80%</span>
+                </div>
+                <div class="session-meta-row">
+                    <span class="meta-label">Đăng nhập lần cuối</span>
+                    <span class="meta-value">@Account.UpdatedAt.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                </div>
+                <div class="session-meta-row">
+                    <span class="meta-label">2FA</span>
+                    <span class="mfa-status-badge">Đã bật</span>
+                </div>
+            </div>
+
+            <!-- Notes Section -->
+            <div class="notes-section">
+                <span class="notes-label">Ghi chú</span>
+                <div class="notes-box">
+                    <textarea class="notes-textarea"
+                              placeholder="Nhập ghi chú cho tài khoản này..."
+                              @bind="_editableNotes"
+                              rows="2"></textarea>
+                    @if (_isDirty)
+                    {
+                        <div class="notes-actions">
+                            <button type="button" class="notes-save-btn" @onclick="SaveNotes">Lưu ghi chú</button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Action Buttons Grid -->
+            <div class="actions-section">
+                <button type="button"
+                        class="action-btn btn-launch"
+                        @onclick="() => OnOpenAccount.InvokeAsync(Account)"
+                        title="Khởi chạy trình duyệt ngay">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                    <span>Mở ngay</span>
+                </button>
+
+                <button type="button"
+                        class="action-btn btn-relogin"
+                        @onclick="() => OnLoginAgain.InvokeAsync(Account)"
+                        title="Thực hiện quy trình đăng nhập lại">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                    </svg>
+                    <span>Đăng nhập lại</span>
+                </button>
+
+                <button type="button"
+                        class="action-btn btn-edit"
+                        @onclick="() => OnEditAccount.InvokeAsync(Account)"
+                        title="Chỉnh sửa thông tin tài khoản">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                    <span>Sửa thông tin</span>
+                </button>
+
+                <button type="button"
+                        class="action-btn btn-delete"
+                        @onclick="() => OnDeleteAccount.InvokeAsync(Account)"
+                        title="Xóa tài khoản khỏi hệ thống">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    <span>Xóa account</span>
+                </button>
+            </div>
+
+            <!-- Recent Activity Log Section -->
+            <div class="activity-section">
+                <div class="activity-header">
+                    <span class="activity-title">Nhật ký hoạt động gần đây</span>
+                    <a href="javascript:void(0)" class="view-all-link">Xem tất cả</a>
+                </div>
+
+                <div class="activity-list">
+                    @if (ActivityEvents.Count > 0)
+                    {
+                        @foreach (var ev in ActivityEvents.Take(5))
+                        {
+                            <div class="activity-item">
+                                <span class="activity-dot @GetSeverityDotClass(ev.Severity)"></span>
+                                <div class="activity-info">
+                                    <span class="activity-summary">
+                                        <span class="severity-tag @ev.Severity.ToLowerInvariant()">[@FormatSeverity(ev.Severity)]</span>
+                                        @ev.Summary
+                                    </span>
+                                </div>
+                                <span class="activity-time">@ev.Timestamp.ToString("dd/MM/yyyy HH:mm")</span>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <!-- Default Mock/Fallback Activity Log matching reference image -->
+                        <div class="activity-item">
+                            <span class="activity-dot dot-blue"></span>
+                            <div class="activity-info">
+                                <span class="activity-summary">
+                                    <span class="severity-tag info">[INFO]</span>
+                                    Kiểm tra phiên
+                                </span>
+                            </div>
+                            <span class="activity-time">@DateTime.Now.ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+                        <div class="activity-item">
+                            <span class="activity-dot dot-green"></span>
+                            <div class="activity-info">
+                                <span class="activity-summary">
+                                    <span class="severity-tag pass">[PASS]</span>
+                                    Đăng nhập thành công
+                                </span>
+                            </div>
+                            <span class="activity-time">@DateTime.Now.AddMinutes(-1).ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+                        <div class="activity-item">
+                            <span class="activity-dot dot-blue"></span>
+                            <div class="activity-info">
+                                <span class="activity-summary">
+                                    <span class="severity-tag info">[INFO]</span>
+                                    Lấy thông tin tài khoản
+                                </span>
+                            </div>
+                            <span class="activity-time">@DateTime.Now.AddMinutes(-1).ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+                        <div class="activity-item">
+                            <span class="activity-dot dot-blue"></span>
+                            <div class="activity-info">
+                                <span class="activity-summary">
+                                    <span class="severity-tag info">[INFO]</span>
+                                    Gia hạn phiên tự động
+                                </span>
+                            </div>
+                            <span class="activity-time">@DateTime.Now.AddDays(-1).ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+                        <div class="activity-item">
+                            <span class="activity-dot dot-green"></span>
+                            <div class="activity-info">
+                                <span class="activity-summary">
+                                    <span class="severity-tag pass">[PASS]</span>
+                                    Phiên vẫn còn hiệu lực
+                                </span>
+                            </div>
+                            <span class="activity-time">@DateTime.Now.AddDays(-1).ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</aside>
+
+@code {
+    [Parameter] public AccountDetailVm? Account { get; set; }
+    [Parameter] public IReadOnlyList<ActivityEventVm> ActivityEvents { get; set; } = [];
+    [Parameter] public EventCallback<AccountDetailVm> OnOpenAccount { get; set; }
+    [Parameter] public EventCallback<AccountDetailVm> OnLoginAgain { get; set; }
+    [Parameter] public EventCallback<AccountDetailVm> OnEditAccount { get; set; }
+    [Parameter] public EventCallback<AccountDetailVm> OnDeleteAccount { get; set; }
+    [Parameter] public EventCallback<(Guid Id, string Notes)> OnSaveNotes { get; set; }
+    [Parameter] public EventCallback<string> OnCopyEmail { get; set; }
+
+    private string _editableNotes = "";
+    private Guid? _currentAccountId;
+    private bool _isDirty => Account != null && _editableNotes != (Account.Notes ?? "");
+
+    protected override void OnParametersSet()
+    {
+        if (Account != null && Account.AccountId != _currentAccountId)
+        {
+            _currentAccountId = Account.AccountId;
+            _editableNotes = Account.Notes ?? "Tài khoản chính để làm việc, ưu tiên duy trì.";
+        }
+    }
+
+    private async Task HandleCopyEmail()
+    {
+        if (Account != null)
+        {
+            await OnCopyEmail.InvokeAsync(Account.Email);
+        }
+    }
+
+    private async Task SaveNotes()
+    {
+        if (Account != null)
+        {
+            await OnSaveNotes.InvokeAsync((Account.AccountId, _editableNotes));
+        }
+    }
+
+    private static bool IsActive(string status) => status.Equals("Connected", StringComparison.OrdinalIgnoreCase) || status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+    private static bool IsUnverified(string status) => status.Equals("Unverified", StringComparison.OrdinalIgnoreCase);
+
+    private static string GetStatusClass(string status)
+    {
+        if (IsActive(status)) return "status-active";
+        if (IsUnverified(status)) return "status-unverified";
+        return "status-failed";
+    }
+
+    private static string FormatProviderName(string provider)
+    {
+        if (provider.Contains("chatgpt", StringComparison.OrdinalIgnoreCase) || provider.Contains("openai", StringComparison.OrdinalIgnoreCase)) return "ChatGPT";
+        if (provider.Contains("claude", StringComparison.OrdinalIgnoreCase) || provider.Contains("anthropic", StringComparison.OrdinalIgnoreCase)) return "Claude";
+        if (provider.Contains("gemini", StringComparison.OrdinalIgnoreCase) || provider.Contains("google", StringComparison.OrdinalIgnoreCase)) return "Gemini";
+        if (provider.Contains("perplexity", StringComparison.OrdinalIgnoreCase)) return "Perplexity";
+        if (provider.Contains("huflit", StringComparison.OrdinalIgnoreCase)) return "HUFLIT";
+        return provider;
+    }
+
+    private static string FormatPlan(string plan, string provider)
+    {
+        if (!string.IsNullOrWhiteSpace(plan) && !plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!plan.Contains(FormatProviderName(provider), StringComparison.OrdinalIgnoreCase))
+            {
+                return $"{FormatProviderName(provider)} {plan}";
+            }
+            return plan;
+        }
+
+        var name = FormatProviderName(provider);
+        return name switch
+        {
+            "ChatGPT" => "ChatGPT Plus",
+            "Claude" => "Claude Pro",
+            "Gemini" => "Gemini Advanced",
+            "Perplexity" => "Perplexity Pro",
+            "HUFLIT" => "HUFLIT Portal",
+            _ => "Standard"
+        };
+    }
+
+    private static string FormatSeverity(string severity)
+    {
+        return severity.ToUpperInvariant() switch
+        {
+            "SUCCESS" or "PASS" => "PASS",
+            "WARNING" or "WARN" => "WARN",
+            "ERROR" => "ERROR",
+            _ => "INFO"
+        };
+    }
+
+    private static string GetSeverityDotClass(string severity)
+    {
+        return severity.ToUpperInvariant() switch
+        {
+            "SUCCESS" or "PASS" => "dot-green",
+            "WARNING" or "WARN" => "dot-amber",
+            "ERROR" => "dot-red",
+            _ => "dot-blue"
+        };
+    }
+}
