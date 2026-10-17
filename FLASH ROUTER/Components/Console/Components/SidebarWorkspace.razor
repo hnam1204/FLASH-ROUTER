@@ -13,6 +13,10 @@
         </div>
         <span class="source-label">Dữ liệu từ các service hiện có</span>
     </header>
+    @if (AccountLoadError)
+    {
+        <p class="workspace-load-error" role="alert">Không thể đọc dữ liệu account. Mọi thống kê phía dưới không đủ điều kiện nghiệm thu; hãy kiểm tra SQLite và tải lại trang.</p>
+    }
 
     @if (ActiveTab == "overview")
     {
@@ -198,6 +202,7 @@
 @code {
     [Parameter] public string ActiveTab { get; set; } = "overview";
     [Parameter] public IReadOnlyList<AccountListItemVm> Accounts { get; set; } = Array.Empty<AccountListItemVm>();
+    [Parameter] public bool AccountLoadError { get; set; }
     [Parameter] public Guid? SelectedAccountId { get; set; }
     [Parameter] public DiagnosticsVm? Diagnostics { get; set; }
     [Parameter] public string CurrentTheme { get; set; } = "dark";
