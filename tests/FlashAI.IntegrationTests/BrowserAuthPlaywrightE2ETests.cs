@@ -173,6 +173,31 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task HeadedPlaywrightWaitsForTransientUnknownAcrossAllCredentialSteps()
+    {
+        RequireChrome();
+        var accountId = await CreateAccountAsync(
+            "delayed-transitions@example.test", "SyntheticPassword-Delayed");
+        using var profileManager = CreateProfileManager();
+        var originPolicy = CreateLocalOriginPolicy();
+        var delayedLoginUri = new Uri(_server.LoginUri, "?variant=delayed-transitions");
+        var sessionFactory = CreateSessionFactory(originPolicy, delayedLoginUri);
+        await using var orchestrator = CreateOrchestrator(profileManager, sessionFactory, originPolicy);
+
+        // The fixture shows a DOM with no login fields for 700 ms after each
+        // submit (email, password, TOTP). The observer must not stop on the
+        // first Unknown snapshot and must still verify the final session.
+        var result = await orchestrator.AutoLoginAsync(
+            accountId, credentialRotationAttested: true);
+
+        Assert.Equal(BrowserAuthState.BrowserSessionObserved, result.State);
+        Assert.Equal("BROWSER_SESSION_OBSERVED", result.Status);
+        Assert.NotNull(result.Observation);
+
+        await orchestrator.CancelAsync(result.AttemptId!.Value);
+    }
+
+    [Fact]
     public async Task HeadedPlaywrightDoesNotTreatGuestNewChatTextAsAuthenticated()
     {
         RequireChrome();
@@ -660,6 +685,10 @@ internal sealed class MockAuthenticationServer : IAsyncDisposable
 const variant = "__VARIANT__";
 let email = "";
 function error(text) { document.body.innerHTML = "<main><h1>Login error</h1><p>" + text + "</p></main>"; }
+function transition(nextStep) {
+  document.body.innerHTML = "<main><h1>Loading authentication step</h1><p>Please wait</p></main>";
+  setTimeout(nextStep, 700);
+}
 function home() {
   document.cookie = "mock_session=" + encodeURIComponent(email) + "; Max-Age=3600; Path=/; SameSite=Lax";
   document.body.innerHTML = "<main><h1>Welcome home</h1><p>New chat</p><p>Sign out</p></main>";
@@ -672,7 +701,7 @@ function mfa() {
       if (variant === "invalid-totp") {
         document.querySelector("#error").textContent = "Invalid authenticator code";
       } else {
-        home();
+        if (variant === "delayed-transitions") transition(home); else home();
       }
     }
   });
@@ -685,7 +714,7 @@ function password() {
       if (variant === "invalid-password") {
         error("Invalid password");
       } else {
-        mfa();
+        if (variant === "delayed-transitions") transition(mfa); else mfa();
       }
     }
   });
@@ -699,7 +728,7 @@ document.querySelector("#continue").addEventListener("click", () => {
     if (variant === "invalid-email") {
       error("Invalid email");
     } else {
-      password();
+      if (variant === "delayed-transitions") transition(password); else password();
     }
   }
 });
