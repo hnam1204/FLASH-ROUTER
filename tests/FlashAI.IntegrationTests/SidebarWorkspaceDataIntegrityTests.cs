@@ -52,6 +52,18 @@ public sealed class SidebarWorkspaceDataIntegrityTests
     }
 
     [Fact]
+    public void ReloginRequiresAnExplicitPerAttemptCredentialAttestation()
+    {
+        var root = WorkspaceRoot();
+        var console = File.ReadAllText(Path.Combine(root, "FLASH ROUTER", "Components",
+            "Console", "AutoLoginConsole.razor"));
+        Assert.Contains("RequestReloginConfirmation", console, StringComparison.Ordinal);
+        Assert.Contains("ConfirmReloginAsync", console, StringComparison.Ordinal);
+        Assert.Contains("_credentialRotationConfirmed", console, StringComparison.Ordinal);
+        Assert.Contains("credentialRotationAttested: credentialRotationAttested", console, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RealMemberAuditAndProviderCapabilitiesAreNotClaimedWithoutBackend()
     {
         var root = WorkspaceRoot();
