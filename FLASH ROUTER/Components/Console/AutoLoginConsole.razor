@@ -66,10 +66,17 @@
                 </header>
 
                 <!-- 4 KPI Cards Section -->
+                @if (_accountLoadError)
+                {
+                    <p role="alert">Không thể tải dữ liệu account. Các con số 0 không được coi là kết quả thống kê.</p>
+                }
+                else
+                {
                 <KpiCardsSection TotalAccounts="@_totalAccountsCount"
                                  ActiveAccounts="@_activeAccountsCount"
                                  UnverifiedAccounts="@_unverifiedAccountsCount"
                                  FailedAccounts="@_failedAccountsCount" />
+                }
 
                 <!-- Account Filter Toolbar -->
                 <AccountFilterToolbar SelectedPlatform="@_platformFilter"
@@ -104,6 +111,7 @@
                 {
                     <SidebarWorkspace ActiveTab="@_activeTab"
                                       Accounts="@_allAccounts"
+                                      AccountLoadError="@_accountLoadError"
                                       SelectedAccountId="@_selectedAccountId"
                                       Diagnostics="@_diagnosticsSnapshot"
                                       CurrentTheme="@_currentTheme"
@@ -195,6 +203,7 @@
     private string _systemTimeString = DateTime.Now.ToString("dddd, dd 'Tháng' MM, yyyy HH:mm", new System.Globalization.CultureInfo("vi-VN"));
     private string _systemStatusText = "Chưa xác minh trạng thái hệ thống";
     private bool _isSystemHealthy = false;
+    private bool _accountLoadError = false;
     private DiagnosticsVm? _diagnosticsSnapshot;
 
     // Dialogs state
@@ -277,10 +286,14 @@
         {
             var accounts = await AccountReader.GetAccountsAsync();
             _allAccounts = accounts.ToList();
+            _accountLoadError = false;
         }
         catch
         {
             _allAccounts = [];
+            _accountLoadError = true;
+            _systemStatusText = "Không thể tải dữ liệu tài khoản";
+            _isSystemHealthy = false;
         }
 
         // Calculate KPIs from actual real loaded accounts
@@ -675,10 +688,12 @@
                 progress: progress,
                 cancellationToken: _automationCts.Token);
 
-            if (result.IsSuccess)
+            if (result.IsSuccess
+                && result.State == BrowserAuthState.BrowserSessionObserved
+                && result.Observation is not null)
             {
-                _automationStage = "Thành công";
-                _automationStatusMessage = "Đăng nhập và xác thực phiên thành công!";
+                _automationStage = "Đã quan sát phiên";
+                _automationStatusMessage = "Đã quan sát giao diện sau đăng nhập trong Chromium; chưa xác minh danh tính qua OAuth.";
                 _automationTechnicalDetail = $"Session State: {result.State}";
                 _isAutomationRunning = false;
                 _isAutomationSuccess = true;
@@ -686,7 +701,7 @@
             }
             else
             {
-                _automationStage = "Cần thao tác";
+                _automationStage = "Chưa xác minh / Cần thao tác";
                 _automationStatusMessage = result.Message;
                 _automationTechnicalDetail = $"Trạng thái xác thực: {result.Status} ({result.State})";
                 _isAutomationRunning = false;
