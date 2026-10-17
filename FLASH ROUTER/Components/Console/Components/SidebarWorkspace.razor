@@ -11,7 +11,10 @@
             <h1 id="workspace-title">@Title</h1>
             <p>@Description</p>
         </div>
-        <span class="source-label">Dữ liệu từ các service hiện có</span>
+        <div class="workspace-actions">
+            <button type="button" class="workspace-action secondary" @onclick="OnRefresh.InvokeAsync">Làm mới dữ liệu</button>
+            <span class="source-label">Dữ liệu từ các service hiện có</span>
+        </div>
     </header>
     @if (AccountLoadError)
     {
@@ -207,6 +210,7 @@
     [Parameter] public DiagnosticsVm? Diagnostics { get; set; }
     [Parameter] public string CurrentTheme { get; set; } = "dark";
     [Parameter] public EventCallback<string> OnNavigate { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
     [Parameter] public EventCallback OnToggleTheme { get; set; }
     [Parameter] public EventCallback<AccountListItemVm> OnOpenBrowser { get; set; }
     [Parameter] public EventCallback<AccountListItemVm> OnLoginAgain { get; set; }
