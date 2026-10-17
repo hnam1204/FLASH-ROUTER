@@ -163,3 +163,16 @@
 .console-body-layout.is-auxiliary {
     grid-template-columns: minmax(0, 1fr);
 }
+
+/* Explicit consent before saved-credential re-login. Never preload or persist secrets. */
+.relogin-confirm-overlay{position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:16px}
+.relogin-confirm-panel{width:min(100%,480px);background:var(--app-surface);border:1px solid var(--app-border);color:var(--text-primary);border-radius:13px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.3)}
+.relogin-confirm-panel h2{font-size:19px;margin:0 0 14px}
+.relogin-confirm-panel p{font-size:14px;color:var(--text-muted);line-height:1.55;overflow-wrap:anywhere}
+.relogin-confirm-check{display:flex;align-items:flex-start;gap:12px;font-size:13px;line-height:1.6;margin:18px 0}
+.relogin-confirm-check input{margin-top:4px;accent-color:var(--accent-primary);flex-shrink:0}
+.relogin-confirm-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.relogin-confirm-actions button{padding:10px 15px;border-radius:8px;border:1px solid var(--app-border);font:inherit;font-size:13px;font-weight:650;color:white;background:var(--accent-primary);cursor:pointer}
+.relogin-confirm-actions button.secondary{background:var(--app-elevated);color:var(--text-primary)}
+.relogin-confirm-actions button:disabled{opacity:.45;cursor:not-allowed}
+.relogin-confirm-actions button:focus-visible{outline:3px solid var(--accent-teal);outline-offset:2px}
