@@ -34,7 +34,9 @@
         <AppTopbar SearchText="@_globalSearchText"
                    OnSearchChanged="HandleGlobalSearchChanged"
                    CurrentTheme="@_currentTheme"
-                   OnToggleTheme="ToggleThemeAsync" />
+                   OnToggleTheme="ToggleThemeAsync"
+                   OnNavigate="HandleTabSelected"
+                   HasNotifications="@(_allAccounts.Any(a => a.Status is "Unverified" or "ReauthNeeded" or "ConnectionError" or "Failed"))" />
 
         <!-- CONSOLE BODY LAYOUT -->
         <div class="console-body-layout @(_activeTab == "accounts" ? "" : "is-auxiliary")">
@@ -399,6 +401,7 @@
     private void HandleGlobalSearchChanged(string text)
     {
         _globalSearchText = text;
+        if (!string.IsNullOrWhiteSpace(text)) _activeTab = "accounts";
         _currentPage = 1;
         ApplyFiltersAndPagination();
     }
