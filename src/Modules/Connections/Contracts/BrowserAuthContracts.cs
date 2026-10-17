@@ -61,7 +61,8 @@ public enum BrowserPageState
     RecoveryCode,
     SmsOrEmailCode,
     RateLimited,
-    Authenticated
+    Authenticated,
+    InvalidCredentials
 }
 
 public sealed record BrowserPageSnapshot(

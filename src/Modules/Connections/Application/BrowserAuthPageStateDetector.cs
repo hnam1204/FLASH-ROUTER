@@ -54,7 +54,8 @@ public sealed class StableBrowserPageStateDetector : IBrowserPageStateDetector
             or BrowserPageState.RateLimited
             or BrowserPageState.Passkey
             or BrowserPageState.RecoveryCode
-            or BrowserPageState.SmsOrEmailCode)
+            or BrowserPageState.SmsOrEmailCode
+            or BrowserPageState.InvalidCredentials)
         {
             return snapshot.State;
         }

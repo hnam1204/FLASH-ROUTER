@@ -229,7 +229,10 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
         "Xác minh",
         "Sign in",
         "Log in",
-        "Đăng nhập"
+        "Đăng nhập",
+        "Xác nhận",
+        "Gửi",
+        "Submit"
     ];
 
     private static readonly string[] EmailAlternativeTokens =
@@ -247,17 +250,30 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
     [
         "input#mobile-auth-email",
         "input[name='login_hint']",
+        "input[name='username']",
+        "input[name='email']",
         "input[autocomplete='email']",
+        "input[autocomplete='username']",
         "input[aria-label*='email' i]",
         "input[placeholder*='email' i]",
-        "input[type='email']"
+        "input[type='email']",
+        "input#email",
+        "input#username"
     ];
 
     private static readonly string[] PasswordSelectors =
     [
+        "input[name='password']",
         "input[autocomplete='current-password']",
+        "input[type='password']",
+        "input#password",
+        "input#current-password",
+        "input[name='current-password']",
         "input[aria-label*='password' i]",
-        "input[type='password']"
+        "input[aria-label*='mật khẩu' i]",
+        "input[placeholder*='password' i]",
+        "input[placeholder*='mật khẩu' i]",
+        "input[data-testid*='password' i]"
     ];
 
     private static readonly string[] TotpSelectors =
@@ -349,6 +365,16 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
         ThrowIfDisposed();
         try
         {
+            var pages = _context.Pages;
+            if (pages.Count > 0 && !ReferenceEquals(pages[^1], _page))
+            {
+                var latest = pages[^1];
+                if (Uri.TryCreate(latest.Url, UriKind.Absolute, out var latestUri) && _isAllowedOrigin(latestUri))
+                {
+                    _page = latest;
+                }
+            }
+
             var currentUri = CurrentUri;
             var bodyText = await _page.Locator("body").InnerTextAsync(new LocatorInnerTextOptions { Timeout = 3_000 }).WaitAsync(cancellationToken);
             var emailField = await FindFirstVisibleAsync(EmailSelectors, cancellationToken);
@@ -505,13 +531,18 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
 
         try
         {
-            var locator = await FindFirstVisibleAsync(selectors, cancellationToken);
+            var locator = await WaitForFirstVisibleAsync(selectors, TimeSpan.FromSeconds(5), cancellationToken);
             if (locator is null)
             {
                 throw new BrowserAuthSessionException("BROWSER_FIELD_NOT_FOUND", "Không còn nhận diện được trường xác thực an toàn.");
             }
 
             await locator.FillAsync(value, new LocatorFillOptions { Timeout = 5_000 }).WaitAsync(cancellationToken);
+            var valueLength = (await locator.InputValueAsync().WaitAsync(cancellationToken)).Length;
+            if (valueLength == 0)
+            {
+                throw new BrowserAuthSessionException("BROWSER_FILL_FAILED", "Không thể xác minh trường đã được điền.");
+            }
         }
         catch (BrowserAuthSessionException)
         {
@@ -592,7 +623,7 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
 
         try
         {
-            var field = await FindFirstVisibleAsync(fieldSelectors, cancellationToken);
+            var field = await WaitForFirstVisibleAsync(fieldSelectors, TimeSpan.FromSeconds(5), cancellationToken);
             if (field is null)
             {
                 throw new BrowserAuthSessionException(
@@ -751,6 +782,28 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
             }
         }
 
+        if (visibleDataTestMatches.Count > 0)
+        {
+            return visibleDataTestMatches;
+        }
+
+        var submitButtons = scope.Locator("button[type='submit'], input[type='submit'], button[data-action-button-primary='true']");
+        var submitCount = await submitButtons.CountAsync().WaitAsync(cancellationToken);
+        var visibleSubmits = new List<ILocator>();
+        for (var index = 0; index < submitCount; index++)
+        {
+            var candidate = submitButtons.Nth(index);
+            if (await candidate.IsVisibleAsync().WaitAsync(cancellationToken))
+            {
+                visibleSubmits.Add(candidate);
+            }
+        }
+
+        if (visibleSubmits.Count == 1)
+        {
+            return visibleSubmits;
+        }
+
         return visibleDataTestMatches;
     }
 
@@ -897,26 +950,56 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
         }
     }
 
+    private async Task<ILocator?> WaitForFirstVisibleAsync(
+        string[] selectors,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.Add(timeout);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var found = await FindFirstVisibleAsync(selectors, cancellationToken);
+            if (found is not null)
+            {
+                return found;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(150), cancellationToken);
+        }
+
+        return await FindFirstVisibleAsync(selectors, cancellationToken);
+    }
+
     private async Task<ILocator?> FindFirstVisibleAsync(string[] selectors, CancellationToken cancellationToken)
     {
         foreach (var selector in selectors)
         {
-            var locator = _page.Locator(selector).First;
-            if (await locator.CountAsync().WaitAsync(cancellationToken) == 0)
+            var locator = _page.Locator(selector);
+            int count;
+            try
+            {
+                count = await locator.CountAsync().WaitAsync(cancellationToken);
+            }
+            catch (PlaywrightException)
             {
                 continue;
             }
 
-            try
+            for (var i = 0; i < count; i++)
             {
-                if (await locator.IsVisibleAsync().WaitAsync(cancellationToken))
+                var candidate = locator.Nth(i);
+                try
                 {
-                    return locator;
+                    if (await candidate.IsVisibleAsync().WaitAsync(cancellationToken)
+                        && await candidate.IsEnabledAsync().WaitAsync(cancellationToken))
+                    {
+                        return candidate;
+                    }
                 }
-            }
-            catch (PlaywrightException)
-            {
-                // A transient locator failure is treated as not found and retried with the next stable selector.
+                catch (PlaywrightException)
+                {
+                    // A transient locator failure is treated as not found and retried with the next candidate.
+                }
             }
         }
 
@@ -931,19 +1014,24 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
         int loginEntryCount,
         bool pageReady)
     {
-        if (Matches(bodyText, "captcha|verify you are human|are you human"))
+        if (Matches(bodyText, "captcha|verify you are human|are you human|xác minh bạn là con người|thử thách bảo mật"))
         {
             return BrowserPageState.Captcha;
         }
 
-        if (Matches(bodyText, "rate[- ]limit|too many requests|too many attempts|try again later|temporarily blocked"))
+        if (Matches(bodyText, "rate[- ]limit|too many requests|too many attempts|try again later|temporarily blocked|quá nhiều yêu cầu|thử lại sau"))
         {
             return BrowserPageState.RateLimited;
         }
 
+        if (Matches(bodyText, "wrong password|incorrect password|invalid password|your password was incorrect|password is incorrect|mật khẩu không chính xác|mật khẩu không đúng|sai mật khẩu|email or password is incorrect|tài khoản hoặc mật khẩu không đúng"))
+        {
+            return BrowserPageState.InvalidCredentials;
+        }
+
         // Guest landing pages can expose a chat composer and "New chat" text.
         // Require an account-specific marker before reporting authentication.
-        if (Matches(bodyText, "log out|sign out|account settings|manage account|my account"))
+        if (Matches(bodyText, "log out|sign out|account settings|manage account|my account|đăng xuất|cài đặt tài khoản|quản lý tài khoản|tài khoản của tôi"))
         {
             return BrowserPageState.Authenticated;
         }
@@ -965,22 +1053,22 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
             return BrowserPageState.EmailRequired;
         }
 
-        if (Matches(bodyText, "single sign-on|\\bsso\\b|continue with google|continue with microsoft"))
+        if (Matches(bodyText, "single sign-on|\\bsso\\b|continue with google|continue with microsoft|continue with apple|đăng nhập bằng google|tiếp tục với google|tiếp tục với microsoft|tiếp tục với apple"))
         {
             return BrowserPageState.ExternalProviderRequired;
         }
 
-        if (Matches(bodyText, "passkey|security key|use your passkey"))
+        if (Matches(bodyText, "passkey|security key|use your passkey|khóa bảo mật|sử dụng khóa bảo mật"))
         {
             return BrowserPageState.Passkey;
         }
 
-        if (Matches(bodyText, "recovery code|backup code"))
+        if (Matches(bodyText, "recovery code|backup code|mã khôi phục|mã dự phòng"))
         {
             return BrowserPageState.RecoveryCode;
         }
 
-        if (Matches(bodyText, "sms code|text message|email code|verification code"))
+        if (Matches(bodyText, "sms code|text message|email code|verification code|check your email|mã sms|mã xác minh|kiểm tra email|mã gửi qua email|thiết bị mới|xác minh thiết bị"))
         {
             return BrowserPageState.SmsOrEmailCode;
         }

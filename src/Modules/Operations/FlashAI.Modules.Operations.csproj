@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>FlashAI.Modules.Operations</AssemblyName>
+    <RootNamespace>FlashAI.Modules.Operations</RootNamespace>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="**\bin\**;**\obj\**" />
+    <EmbeddedResource Remove="**\bin\**;**\obj\**" />
+    <None Remove="**\bin\**;**\obj\**" />
+    <Content Remove="**\bin\**;**\obj\**" />
+    <RazorComponent Remove="**\bin\**;**\obj\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\FlashAI.Foundation\FlashAI.Foundation.csproj" />
+  </ItemGroup>
+</Project>
+

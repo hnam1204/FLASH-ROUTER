@@ -191,13 +191,29 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                     _ => BrowserAuthResult.Failure(attempt.State, "AUTO_LOGIN_STEP_UNSUPPORTED", "Bước đăng nhập hiện tại không được hỗ trợ tự động.", attempt.Attempt.AttemptId)
                 };
 
-                if (!result.IsSuccess)
+                if (!result.IsSuccess || IsTerminalState(result.State))
                 {
+                    if (result.State == BrowserAuthState.BrowserSessionObserved)
+                    {
+                        attempt.Consent.Consume();
+                        LogEvent(attempt, "AutoLoginCompleted");
+                        ReportAttemptProgress(attempt, progress, "CheckingAuthenticatedSession", result.State, "Phiên đăng nhập ChatGPT đã được xác nhận thành công.");
+                        return WithTiming(result, attempt);
+                    }
+
                     attempt.Consent.Revoke();
+                    var terminalMsg = result.State switch
+                    {
+                        BrowserAuthState.HumanActionRequired => result.Message ?? "Hãy tiếp quản thao tác thủ công trong Chrome.",
+                        BrowserAuthState.ExternalProviderRequired => "Provider yêu cầu xác thực bên ngoài. Hãy tiếp quản trong Chrome.",
+                        BrowserAuthState.Unknown => "Chưa xác định được bước tiếp theo của website. Hãy tiếp quản trong Chrome.",
+                        _ => result.Message
+                    };
+                    ReportAttemptProgress(attempt, progress, "WaitingForUser", result.State, terminalMsg);
                     return WithTiming(result, attempt);
                 }
 
-                ReportProgress(progress, "CheckingAuthenticatedSession", result.State, "Đang kiểm tra trạng thái phiên ChatGPT.");
+                ReportAttemptProgress(attempt, progress, "CheckingAuthenticatedSession", result.State, "Đang kiểm tra trạng thái phiên ChatGPT.");
             }
 
             attempt.Consent.Revoke();
@@ -360,13 +376,29 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                     _ => BrowserAuthResult.Failure(attempt.State, "AUTO_LOGIN_STEP_UNSUPPORTED", "Bước đăng nhập hiện tại không được hỗ trợ tự động.", attempt.Attempt.AttemptId)
                 };
 
-                if (!result.IsSuccess)
+                if (!result.IsSuccess || IsTerminalState(result.State))
                 {
+                    if (result.State == BrowserAuthState.BrowserSessionObserved)
+                    {
+                        attempt.Consent.Consume();
+                        LogEvent(attempt, "AutoLoginCompleted");
+                        ReportAttemptProgress(attempt, progress, "CheckingAuthenticatedSession", result.State, "Phiên đăng nhập ChatGPT đã được xác nhận thành công.");
+                        return WithTiming(result, attempt);
+                    }
+
                     attempt.Consent.Revoke();
+                    var terminalMsg = result.State switch
+                    {
+                        BrowserAuthState.HumanActionRequired => result.Message ?? "Hãy tiếp quản thao tác thủ công trong Chrome.",
+                        BrowserAuthState.ExternalProviderRequired => "Provider yêu cầu xác thực bên ngoài. Hãy tiếp quản trong Chrome.",
+                        BrowserAuthState.Unknown => "Chưa xác định được bước tiếp theo của website. Hãy tiếp quản trong Chrome.",
+                        _ => result.Message
+                    };
+                    ReportAttemptProgress(attempt, progress, "WaitingForUser", result.State, terminalMsg);
                     return WithTiming(result, attempt);
                 }
 
-                ReportProgress(progress, "CheckingAuthenticatedSession", result.State, "Đang kiểm tra trạng thái phiên ChatGPT.");
+                ReportAttemptProgress(attempt, progress, "CheckingAuthenticatedSession", result.State, "Đang kiểm tra trạng thái phiên ChatGPT.");
             }
 
             attempt.Consent.Revoke();
@@ -394,6 +426,14 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             if (attempt is not null)
             {
                 LogTiming(attempt);
+                if (request.SessionMode == BrowserSessionMode.Temporary || result?.IsSuccess == false)
+                {
+                    if (attempt.ProfileCleanup is not null)
+                    {
+                        await attempt.ProfileCleanup.DisposeAsync();
+                        attempt.ProfileCleanup = null;
+                    }
+                }
             }
         }
     }
@@ -913,6 +953,33 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             EventCodeFor(stage, state),
             IsTerminal: IsTerminalState(state)));
 
+    private static void ReportAttemptProgress(
+        AttemptState? attempt,
+        IProgress<BrowserAuthProgress>? progress,
+        string stage,
+        BrowserAuthState state,
+        string message)
+    {
+        if (attempt is not null)
+        {
+            if (attempt.TerminalReported)
+            {
+                return;
+            }
+
+            if (IsTerminalState(state))
+            {
+                attempt.TerminalReported = true;
+            }
+
+            ReportProgress(progress, stage, state, message, attempt.Attempt.AttemptId);
+        }
+        else
+        {
+            ReportProgress(progress, stage, state, message);
+        }
+    }
+
     private static string EventCodeFor(string stage, BrowserAuthState state)
         => stage switch
         {
@@ -923,6 +990,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             "FillingEmail" => "EMAIL",
             "FillingPassword" => "PASSWORD",
             "FillingTotp" => "TOTP",
+            "WaitingForUser" => "WAITING_FOR_USER",
+            "Authenticated" => "AUTHENTICATED",
             "CheckingExistingSession" or "CheckingAuthenticatedSession" => "SESSION_OBSERVATION",
             _ when IsTerminalState(state) => "TERMINAL",
             _ => stage.ToUpperInvariant()
@@ -979,7 +1048,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 BrowserPageState.MfaRequired => BrowserAuthState.MfaRequired,
                 BrowserPageState.ExternalProviderRequired => BrowserAuthState.ExternalProviderRequired,
                 BrowserPageState.Authenticated => BrowserAuthState.BrowserSessionObserved,
-                BrowserPageState.Captcha or BrowserPageState.Passkey or BrowserPageState.RecoveryCode or BrowserPageState.SmsOrEmailCode or BrowserPageState.RateLimited => BrowserAuthState.HumanActionRequired,
+                BrowserPageState.Captcha or BrowserPageState.Passkey or BrowserPageState.RecoveryCode or BrowserPageState.SmsOrEmailCode or BrowserPageState.RateLimited or BrowserPageState.InvalidCredentials => BrowserAuthState.HumanActionRequired,
                 _ => BrowserAuthState.Unknown
             };
 
@@ -1023,6 +1092,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             BrowserPageState.RecoveryCode => ("RECOVERY_CODE_REQUIRED", "Đã dừng để bạn tự hoàn tất recovery code trong Chrome.", (BrowserAuthAction?)null),
             BrowserPageState.SmsOrEmailCode => ("HUMAN_CODE_REQUIRED", "Đã dừng để bạn tự hoàn tất mã SMS hoặc email trong Chrome.", (BrowserAuthAction?)null),
             BrowserPageState.RateLimited => ("RATE_LIMITED", "Website đang giới hạn yêu cầu. Hãy chờ và tiếp tục thủ công trong Chrome.", (BrowserAuthAction?)null),
+            BrowserPageState.InvalidCredentials => ("INVALID_CREDENTIALS", "Thông tin đăng nhập không hợp lệ hoặc mật khẩu không đúng. Hãy kiểm tra lại tài khoản.", (BrowserAuthAction?)null),
             BrowserPageState.Authenticated => ("BROWSER_SESSION_OBSERVED", "Đã quan sát giao diện sau đăng nhập trong Chrome. Đây không phải OAuth hoặc Verified Identity.", (BrowserAuthAction?)null),
             _ => ("UNKNOWN_LOGIN_STATE", "Không nhận diện được bước đăng nhập an toàn. Hãy tiếp quản thao tác thủ công.", (BrowserAuthAction?)null)
         };
@@ -1091,7 +1161,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             BrowserPageState.MfaRequired => "MfaStepDetected",
             BrowserPageState.Authenticated => "AuthenticatedUiObserved",
             BrowserPageState.Captcha or BrowserPageState.Passkey or BrowserPageState.RecoveryCode
-                or BrowserPageState.SmsOrEmailCode or BrowserPageState.RateLimited or BrowserPageState.ExternalProviderRequired
+                or BrowserPageState.SmsOrEmailCode or BrowserPageState.RateLimited or BrowserPageState.ExternalProviderRequired or BrowserPageState.InvalidCredentials
                 => "HumanTakeoverRequired",
             _ => null
         };
@@ -1293,6 +1363,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         public BrowserPageState? LastObservedPageState { get; set; }
         public bool ExistingSessionChecked { get; set; }
         public bool AuthenticatedObservationMeasured { get; set; }
+        public bool TerminalReported { get; set; }
         public AutoLoginAttemptConsent? Consent { get; set; }
         public EphemeralCredentialContext? EphemeralCredential { get; set; }
         public EphemeralBrowserProfilePreparationResult? ProfileCleanup { get; set; }
@@ -1304,8 +1375,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         CancellationToken cancellationToken)
     {
         var result = await RefreshCoreAsync(attempt, cancellationToken);
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
-        while (result.State == BrowserAuthState.EmailRequired
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        while (result.State is BrowserAuthState.EmailRequired or BrowserAuthState.Unknown or BrowserAuthState.Navigating
             && DateTimeOffset.UtcNow < deadline)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
@@ -1322,8 +1393,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
     {
         var expectedState = attempt.State;
         var result = await RefreshCoreAsync(attempt, cancellationToken, totpRemainingSeconds);
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
-        while (result.State == expectedState
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(12);
+        while ((result.State == expectedState || result.State is BrowserAuthState.Unknown or BrowserAuthState.Navigating)
             && DateTimeOffset.UtcNow < deadline)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);

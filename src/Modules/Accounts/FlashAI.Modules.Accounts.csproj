@@ -10,6 +10,13 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="**\bin\**;**\obj\**" />
+    <EmbeddedResource Remove="**\bin\**;**\obj\**" />
+    <None Remove="**\bin\**;**\obj\**" />
+    <Content Remove="**\bin\**;**\obj\**" />
+    <RazorComponent Remove="**\bin\**;**\obj\**" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\FlashAI.Foundation\FlashAI.Foundation.csproj" />
   </ItemGroup>
 </Project>

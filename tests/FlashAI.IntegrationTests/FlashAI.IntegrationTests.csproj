@@ -20,13 +20,8 @@
     <ProjectReference Include="..\..\src\FlashAI.Foundation\FlashAI.Foundation.csproj" />
     <ProjectReference Include="..\..\src\Modules\Accounts\FlashAI.Modules.Accounts.csproj" />
     <ProjectReference Include="..\..\src\Modules\Connections\FlashAI.Modules.Connections.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Subscriptions\FlashAI.Modules.Subscriptions.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Authenticator\FlashAI.Modules.Authenticator.csproj" />
-    <ProjectReference Include="..\..\src\Modules\BackupRestore\FlashAI.Modules.BackupRestore.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Reminders\FlashAI.Modules.Reminders.csproj" />
-    <ProjectReference Include="..\..\src\Modules\ImportExport\FlashAI.Modules.ImportExport.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Settings\FlashAI.Modules.Settings.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Diagnostics\FlashAI.Modules.Diagnostics.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Operations\FlashAI.Modules.Operations.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Workspace\FlashAI.Modules.Workspace.csproj" />
     <ProjectReference Include="..\..\FLASH ROUTER\FLASH ROUTER.csproj" />
     <ProjectReference Include="..\..\src\FlashAI.Cli\FlashAI.Cli.csproj" />
   </ItemGroup>
