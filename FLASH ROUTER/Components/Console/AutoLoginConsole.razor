@@ -167,6 +167,25 @@
                               OnClose="CloseAutomationDialog"
                               OnCancel="CancelAutomation" />
 
+    @if (_pendingReloginAccountId.HasValue)
+    {
+        <div class="relogin-confirm-overlay" role="presentation">
+            <section class="relogin-confirm-panel" role="dialog" aria-modal="true" aria-labelledby="relogin-confirm-heading">
+                <h2 id="relogin-confirm-heading">Xác nhận đăng nhập lại</h2>
+                <p>Tài khoản: @_pendingReloginEmail</p>
+                <p>Chỉ tiếp tục khi bạn sở hữu tài khoản, được phép đăng nhập và đã thay thông tin xác thực bị lộ trước đây.</p>
+                <label class="relogin-confirm-check">
+                    <input type="checkbox" @bind="_credentialRotationConfirmed" />
+                    Tôi xác nhận thông tin xác thực dùng cho lần đăng nhập này đã được thay mới và được phép sử dụng.
+                </label>
+                <div class="relogin-confirm-actions">
+                    <button type="button" class="secondary" @onclick="CancelReloginConfirmation">Hủy</button>
+                    <button type="button" disabled="@(!_credentialRotationConfirmed)" @onclick="ConfirmReloginAsync">Bắt đầu đăng nhập</button>
+                </div>
+            </section>
+        </div>
+    }
+
     <!-- AI Auto Login Console Developer Shell & Automation Support -->
     <div class="developer-shell-support" style="display:none;" aria-hidden="true" data-purpose="automation-support">
         <button type="button" class="theme-toggle-btn" @onclick="ToggleThemeAsync">Theme Toggle</button>
@@ -222,6 +241,9 @@
     private bool _isAutomationRunning = false;
     private bool _isAutomationSuccess = false;
     private CancellationTokenSource? _automationCts;
+    private Guid? _pendingReloginAccountId;
+    private string _pendingReloginEmail = "";
+    private bool _credentialRotationConfirmed;
 
     protected override async Task OnInitializedAsync()
     {
@@ -656,17 +678,42 @@
         StateHasChanged();
     }
 
-    private async Task HandleLoginAgain(AccountListItemVm account)
+    private void HandleLoginAgain(AccountListItemVm account)
     {
-        await ExecuteLoginAgain(account.AccountId, account.Email);
+        RequestReloginConfirmation(account.AccountId, account.Email);
     }
 
-    private async Task HandleLoginAgainFromDetail(AccountDetailVm account)
+    private void HandleLoginAgainFromDetail(AccountDetailVm account)
     {
-        await ExecuteLoginAgain(account.AccountId, account.Email);
+        RequestReloginConfirmation(account.AccountId, account.Email);
     }
 
-    private async Task ExecuteLoginAgain(Guid accountId, string email)
+    private void RequestReloginConfirmation(Guid accountId, string email)
+    {
+        _pendingReloginAccountId = accountId;
+        _pendingReloginEmail = email;
+        _credentialRotationConfirmed = false;
+    }
+
+    private void CancelReloginConfirmation()
+    {
+        _pendingReloginAccountId = null;
+        _pendingReloginEmail = "";
+        _credentialRotationConfirmed = false;
+    }
+
+    private async Task ConfirmReloginAsync()
+    {
+        if (!_pendingReloginAccountId.HasValue || !_credentialRotationConfirmed)
+            return;
+
+        var id = _pendingReloginAccountId.Value;
+        var email = _pendingReloginEmail;
+        CancelReloginConfirmation();
+        await ExecuteLoginAgain(id, email, credentialRotationAttested: true);
+    }
+
+    private async Task ExecuteLoginAgain(Guid accountId, string email, bool credentialRotationAttested)
     {
         _automationCts?.Cancel();
         _automationCts = new CancellationTokenSource();
@@ -691,7 +738,7 @@
 
             var result = await BrowserAuth.AutoLoginAsync(
                 accountId,
-                credentialRotationAttested: true,
+                credentialRotationAttested: credentialRotationAttested,
                 progress: progress,
                 cancellationToken: _automationCts.Token);
 
