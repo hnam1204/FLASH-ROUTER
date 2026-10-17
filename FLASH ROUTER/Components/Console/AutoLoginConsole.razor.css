@@ -158,3 +158,8 @@
         padding: 16px 12px 32px;
     }
 }
+
+/* Sidebar workspace sections replace the account inspector; do not reserve an empty right column. */
+.console-body-layout.is-auxiliary {
+    grid-template-columns: minmax(0, 1fr);
+}
