@@ -116,7 +116,7 @@
                                       Diagnostics="@_diagnosticsSnapshot"
                                       CurrentTheme="@_currentTheme"
                                       OnNavigate="HandleTabSelected"
-                                      OnRefresh="RefreshDataAsync"
+                                      OnRefresh="RefreshWorkspaceAsync"
                                       OnToggleTheme="ToggleThemeAsync"
                                       OnOpenBrowser="HandleOpenAccount"
                                       OnLoginAgain="HandleLoginAgain" />
@@ -277,6 +277,12 @@
             _isSystemHealthy = false;
             _systemStatusText = "Không thể kiểm tra hệ thống";
         }
+    }
+
+    private async Task RefreshWorkspaceAsync()
+    {
+        await LoadDiagnosticsAsync();
+        await RefreshDataAsync();
     }
 
     private async Task RefreshDataAsync()
