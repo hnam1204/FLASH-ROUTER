@@ -38,6 +38,7 @@ The most recent user request supersedes the older CONSOLE-04 specification prohi
 - KPI no longer hardcodes `+12%` monthly growth.
 - Topbar no longer displays a fabricated admin identity, and notification/help buttons now navigate to the relevant workspaces.
 - UI interprets `BrowserSessionObserved` and non-null observation rather than generic `IsSuccess` as login-flow success, and reports the result as an observed browser state rather than verified OAuth identity.
+- Login Again actions now require a separate in-app checkbox confirming that the account is authorized and exposed credentials have been rotated. The former unconditional `credentialRotationAttested: true` call has been removed from the browser workflow call; the boolean is passed from the explicit confirmation flow.
 
 ## Gaps NOT solved in this slice
 
