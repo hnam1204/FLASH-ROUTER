@@ -15,11 +15,11 @@
                 <th class="col-platform">Nền tảng</th>
                 <th class="col-account">Email / Tài khoản</th>
                 <th class="col-status">Trạng thái</th>
-                <th class="col-session">Phiên</th>
+                <th class="col-session">Phiên web</th>
                 <th class="col-mfa">2FA</th>
                 <th class="col-updated" @onclick="ToggleSort">
                     <div class="sortable-header">
-                        <span>Cập nhật cuối</span>
+                        <span>Ngày theo dõi</span>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M7 15l5 5 5-5M7 9l5-5 5 5"></path>
                         </svg>
@@ -88,7 +88,7 @@
                                     <svg class="status-badge-icon" width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                                         <polygon points="5 3 19 12 5 21 5 3"></polygon>
                                     </svg>
-                                    <span>Hoạt động</span>
+                                    <span>Ghi nhận hoạt động</span>
                                 }
                                 else if (IsUnverified(account.Status))
                                 {
@@ -117,14 +117,7 @@
 
                         <!-- 6. 2FA Badge -->
                         <td class="col-mfa">
-                            @if (Has2Fa(account))
-                            {
-                                <span class="mfa-badge mfa-enabled">Bật</span>
-                            }
-                            else
-                            {
-                                <span class="mfa-badge mfa-disabled">Tắt</span>
-                            }
+                            <span class="mfa-badge">Chưa xác minh</span>
                         </td>
 
                         <!-- 7. Last Updated -->
@@ -344,49 +337,10 @@
     }
 
     private static string FormatPlan(string plan, string provider)
-    {
-        if (!string.IsNullOrWhiteSpace(plan) && !plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!plan.Contains(FormatProviderName(provider), StringComparison.OrdinalIgnoreCase))
-            {
-                return $"{FormatProviderName(provider)} {plan}";
-            }
-            return plan;
-        }
+        => string.IsNullOrWhiteSpace(plan) || plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase)
+            ? "Gói chưa xác minh"
+            : "Ghi nhận: " + plan;
 
-        var name = FormatProviderName(provider);
-        return name switch
-        {
-            "ChatGPT" => "ChatGPT Plus",
-            "Claude" => "Claude Pro",
-            "Gemini" => "Gemini Advanced",
-            "Perplexity" => "Perplexity Pro",
-            "HUFLIT" => "HUFLIT Portal",
-            _ => "Standard"
-        };
-    }
-
-    private static string GetSessionText(AccountListItemVm account)
-    {
-        if (IsActive(account.Status))
-        {
-            var days = (Math.Abs(account.AccountId.GetHashCode()) % 28) + 1;
-            return $"Còn {days} ngày";
-        }
-        if (IsUnverified(account.Status))
-        {
-            return "Chờ 3 ngày";
-        }
-        if (IsExpired(account.Status))
-        {
-            return "Hết hạn";
-        }
-        return "-";
-    }
-
-    private static bool Has2Fa(AccountListItemVm account)
-    {
-        if (account.Tags.Any(t => t.Contains("2fa", StringComparison.OrdinalIgnoreCase))) return true;
-        return (Math.Abs(account.AccountId.GetHashCode()) % 3) != 0;
-    }
+    // Account records contain no trustworthy browser session expiry or MFA enablement.
+    private static string GetSessionText(AccountListItemVm account) => "Chưa xác minh";
 }
