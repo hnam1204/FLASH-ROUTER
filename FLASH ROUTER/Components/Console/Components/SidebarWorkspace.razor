@@ -1,0 +1,261 @@
+@namespace FLASH_ROUTER.Components.Console.Components
+@using FlashAI.Modules.Accounts.Contracts
+@using FlashAI.Modules.Connections.Contracts
+@using FlashAI.Modules.Diagnostics.Contracts
+@inject IPlaywrightBrowserRuntime BrowserRuntime
+@inject IConsoleProviderRegistry ProviderRegistry
+
+<section class="sidebar-workspace" aria-labelledby="workspace-title">
+    <header class="workspace-heading">
+        <div>
+            <h1 id="workspace-title">@Title</h1>
+            <p>@Description</p>
+        </div>
+        <span class="source-label">Dữ liệu từ các service hiện có</span>
+    </header>
+
+    @if (ActiveTab == "overview")
+    {
+        <div class="workspace-stat-grid" aria-label="Tổng quan theo bản ghi account">
+            <div class="workspace-stat"><span>Tài khoản đã lưu</span><strong>@Accounts.Count</strong><small>SQLite hoặc nguồn lưu trữ đang cấu hình</small></div>
+            <div class="workspace-stat"><span>Được ghi nhận Connected</span><strong>@Accounts.Count(IsConnected)</strong><small>Trạng thái lưu trong dữ liệu, không xác minh phiên web</small></div>
+            <div class="workspace-stat"><span>Cần chú ý</span><strong>@AttentionAccounts.Count()</strong><small>Unverified, ReauthNeeded hoặc lỗi kết nối</small></div>
+        </div>
+        <div class="workspace-panel">
+            <h2>Trạng thái hệ thống</h2>
+            @if (Diagnostics is null)
+            {
+                <p>Chưa đọc được chẩn đoán runtime. Không thể xác nhận hệ thống đang hoạt động bình thường.</p>
+            }
+            else
+            {
+                <dl class="workspace-facts">
+                    <dt>Chế độ</dt><dd>@Diagnostics.Mode</dd>
+                    <dt>SQLite</dt><dd>@Diagnostics.DurableStorageStatus</dd>
+                    <dt>Vault</dt><dd>@Diagnostics.VaultStatus</dd>
+                    <dt>Host binding</dt><dd>@Diagnostics.HostBinding</dd>
+                </dl>
+            }
+        </div>
+        <button type="button" class="workspace-action" @onclick='() => NavigateAsync("accounts")'>Xem tài khoản đã lưu</button>
+    }
+    else if (ActiveTab == "automation")
+    {
+        <div class="workspace-panel">
+            <h2>Playwright-managed Chromium</h2>
+            @if (_browserStatus is null)
+            {
+                <p>@_browserError</p>
+            }
+            else
+            {
+                <dl class="workspace-facts">
+                    <dt>Readiness</dt><dd>@_browserStatus.StatusCode</dd>
+                    <dt>Microsoft.Playwright</dt><dd>@_browserStatus.PackageVersion</dd>
+                    <dt>Revision</dt><dd>@(_browserStatus.ResolvedRevision ?? _browserStatus.ExpectedRevision ?? "Chưa xác định")</dd>
+                    <dt>Thông tin</dt><dd>@_browserStatus.Message</dd>
+                </dl>
+            }
+            <button type="button" class="workspace-action secondary" @onclick="RefreshBrowserStatusAsync">Kiểm tra Chromium</button>
+        </div>
+        <div class="workspace-panel">
+            <h2>Nền tảng và khả năng đăng nhập web</h2>
+            <div class="workspace-rows">
+                @foreach (var provider in ProviderRegistry.List())
+                {
+                    <div class="workspace-row">
+                        <div><strong>@provider.DisplayName</strong><small>@provider.Description</small></div>
+                        <span class="workspace-status">@(provider.IsSupported ? "Có adapter" : "Chưa hỗ trợ Web Login")</span>
+                    </div>
+                }
+            </div>
+            <p class="workspace-hint">Có adapter không đồng nghĩa đã xác minh đăng nhập trên tài khoản thật. Không sử dụng cookie hoặc token sao chép từ DevTools.</p>
+        </div>
+        @if (SelectedListAccount is not null)
+        {
+            <div class="workspace-panel">
+                <h2>Tài khoản đang chọn</h2>
+                <p>@SelectedListAccount.DisplayName — @SelectedListAccount.Provider</p>
+                <div class="workspace-actions">
+                    <button type="button" class="workspace-action" @onclick="OpenSelectedAsync">Mở profile trong browser</button>
+                    <button type="button" class="workspace-action secondary" @onclick="LoginSelectedAsync">Yêu cầu đăng nhập lại</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <p class="workspace-hint">Chọn một tài khoản tại Quản lý tài khoản để thực hiện thao tác browser.</p>
+        }
+    }
+    else if (ActiveTab == "activity")
+    {
+        <div class="workspace-panel">
+            <h2>Nhật ký hoạt động</h2>
+            <p>Activity service hiện chỉ có triển khai Preview, không phải audit trail thật. FLASH ROUTER không tự tạo sự kiện đăng nhập hoặc kiểm tra phiên thành công khi chưa có bằng chứng.</p>
+            <h3>Ngày theo dõi ghi trong account</h3>
+            <div class="workspace-rows">
+                @foreach (var account in Accounts.OrderByDescending(a => a.TrackingDate).Take(20))
+                {
+                    <div class="workspace-row"><div><strong>@account.DisplayName</strong><small>@account.Provider — @account.StatusLabel</small></div><time>@account.TrackingDate.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</time></div>
+                }
+                @if (Accounts.Count == 0) { <p>Chưa có bản ghi account.</p> }
+            </div>
+            <p class="workspace-hint">Ngày theo dõi không phải timestamp đăng nhập. Event journal bền vững cần được triển khai riêng để cung cấp audit log đầy đủ.</p>
+        </div>
+    }
+    else if (ActiveTab == "configuration")
+    {
+        <div class="workspace-panel">
+            <h2>Chẩn đoán cấu hình runtime</h2>
+            @if (Diagnostics is null)
+            {
+                <p>Không thể đọc diagnostics. Không được mặc định Healthy.</p>
+            }
+            else
+            {
+                <dl class="workspace-facts">
+                    <dt>Host</dt><dd>@Diagnostics.HostBinding</dd>
+                    <dt>.NET</dt><dd>@Diagnostics.SdkVersion</dd>
+                    <dt>Target</dt><dd>@Diagnostics.TargetFramework</dd>
+                    <dt>Storage</dt><dd>@Diagnostics.DurableStorageStatus</dd>
+                    <dt>Vault</dt><dd>@Diagnostics.VaultStatus</dd>
+                    <dt>Mode</dt><dd>@Diagnostics.Mode</dd>
+                </dl>
+                <h3>Module registrations (không phải health check)</h3>
+                <div class="workspace-rows">
+                    @foreach (var module in Diagnostics.ModuleStatuses.OrderBy(x => x.Key))
+                    {
+                        <div class="workspace-row"><strong>@module.Key</strong><small>@module.Value</small></div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else if (ActiveTab == "members")
+    {
+        <div class="workspace-panel">
+            <h2>Thành viên và phân quyền</h2>
+            <p>Repository hiện chưa có member directory, invitation workflow hoặc RBAC phục vụ giao diện này. Không tạo thành viên mẫu, không hiển thị tên quản trị viên từ ảnh thiết kế như dữ liệu thực.</p>
+            <p class="workspace-hint">Tính năng đang bị giới hạn về backend. Cần thiết kế cơ chế identity, authorization, audit và migration trước khi cho phép thêm thành viên.</p>
+        </div>
+    }
+    else if (ActiveTab == "reports")
+    {
+        <div class="workspace-panel">
+            <h2>Thống kê tài khoản theo nền tảng</h2>
+            <div class="workspace-rows">
+                @foreach (var group in Accounts.GroupBy(a => a.Provider).OrderByDescending(g => g.Count()))
+                {
+                    <div class="workspace-row"><strong>@group.Key</strong><span>@group.Count() account</span></div>
+                }
+                @if (Accounts.Count == 0) { <p>Chưa có bản ghi để thống kê.</p> }
+            </div>
+            <h3>Trạng thái đã lưu</h3>
+            <div class="workspace-rows">
+                @foreach (var group in Accounts.GroupBy(a => a.Status).OrderByDescending(g => g.Count()))
+                {
+                    <div class="workspace-row"><strong>@group.Key</strong><span>@group.Count()</span></div>
+                }
+            </div>
+            <p class="workspace-hint">Báo cáo này tính từ account records. Không có cơ sở dữ liệu usage/quota/billing được xác minh nên không hiển thị những chỉ số đó.</p>
+        </div>
+    }
+    else if (ActiveTab == "notifications")
+    {
+        <div class="workspace-panel">
+            <h2>Cảnh báo từ trạng thái tài khoản</h2>
+            <div class="workspace-rows">
+                @foreach (var account in AttentionAccounts)
+                {
+                    <div class="workspace-row">
+                        <div><strong>@account.DisplayName</strong><small>@account.Provider</small></div>
+                        <span class="workspace-status">@account.StatusLabel</span>
+                    </div>
+                }
+                @if (!AttentionAccounts.Any())
+                {
+                    <p>Không có account được gắn trạng thái cần chú ý trong dữ liệu hiện tại.</p>
+                }
+            </div>
+            <p class="workspace-hint">Đây là cảnh báo suy ra từ trạng thái account, không phải trung tâm thông báo đã gửi/đã đọc.</p>
+        </div>
+    }
+    else if (ActiveTab == "settings")
+    {
+        <div class="workspace-panel">
+            <h2>Giao diện</h2>
+            <p>Chế độ hiện tại: <strong>@CurrentTheme</strong>. Theme được lưu trong localStorage của chính FLASH ROUTER, không bao gồm credential hoặc session.</p>
+            <button type="button" class="workspace-action" @onclick="OnToggleTheme.InvokeAsync">Chuyển Light / Dark</button>
+        </div>
+        <div class="workspace-panel">
+            <h2>Quyền riêng tư</h2>
+            <p>SQLite, Vault và DPAPI giữ nguyên các chính sách hiện có. Các lựa chọn cài đặt ngoài theme hiện chỉ có PreviewSettingsUiPort trong repository; không hiển thị nút lưu giả.</p>
+            <p class="workspace-hint">Không dùng cài đặt này để vô hiệu hóa xác minh 2FA, quản lý profile hoặc kiểm tra quyền sở hữu browser.</p>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public string ActiveTab { get; set; } = "overview";
+    [Parameter] public IReadOnlyList<AccountListItemVm> Accounts { get; set; } = Array.Empty<AccountListItemVm>();
+    [Parameter] public Guid? SelectedAccountId { get; set; }
+    [Parameter] public DiagnosticsVm? Diagnostics { get; set; }
+    [Parameter] public string CurrentTheme { get; set; } = "dark";
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+    [Parameter] public EventCallback OnToggleTheme { get; set; }
+    [Parameter] public EventCallback<AccountListItemVm> OnOpenBrowser { get; set; }
+    [Parameter] public EventCallback<AccountListItemVm> OnLoginAgain { get; set; }
+
+    private PlaywrightBrowserRuntimeStatus? _browserStatus;
+    private string _browserError = "Chưa kiểm tra trạng thái Chromium.";
+
+    private AccountListItemVm? SelectedListAccount =>
+        Accounts.FirstOrDefault(x => x.AccountId == SelectedAccountId);
+
+    private IEnumerable<AccountListItemVm> AttentionAccounts =>
+        Accounts.Where(a => a.Status.Equals("Unverified", StringComparison.OrdinalIgnoreCase)
+            || a.Status.Equals("ReauthNeeded", StringComparison.OrdinalIgnoreCase)
+            || a.Status.Equals("ConnectionError", StringComparison.OrdinalIgnoreCase)
+            || a.Status.Equals("Failed", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsConnected(AccountListItemVm a) =>
+        a.Status.Equals("Connected", StringComparison.OrdinalIgnoreCase);
+
+    private string Title => ActiveTab switch {
+        "overview" => "Tổng quan",
+        "automation" => "Tự động hóa",
+        "activity" => "Lịch sử hoạt động",
+        "configuration" => "Cấu hình",
+        "members" => "Thành viên",
+        "reports" => "Báo cáo",
+        "notifications" => "Thông báo",
+        "settings" => "Cài đặt",
+        _ => "Không tìm thấy mục"
+    };
+
+    private string Description => ActiveTab switch {
+        "overview" => "Tình trạng dữ liệu thật tại máy đang chạy FLASH ROUTER.",
+        "automation" => "Browser runtime và các adapter hiện có; không tạo phiên đăng nhập giả.",
+        "activity" => "Phân biệt dữ liệu theo dõi account và nhật ký thực thi.",
+        "configuration" => "Các chỉ số đọc từ runtime diagnostics.",
+        "members" => "Chỉ hiển thị chức năng khi có hệ thống phân quyền thật.",
+        "reports" => "Báo cáo tổng hợp từ các account đã lưu.",
+        "notifications" => "Những account cần người dùng kiểm tra lại.",
+        "settings" => "Cài đặt giao diện đang có hiệu lực.",
+        _ => ""
+    };
+
+    protected override async Task OnInitializedAsync() => await RefreshBrowserStatusAsync();
+
+    private async Task RefreshBrowserStatusAsync()
+    {
+        try { _browserStatus = await BrowserRuntime.GetStatusAsync(); _browserError = _browserStatus.Message; }
+        catch { _browserStatus = null; _browserError = "Không thể xác minh tình trạng Chromium runtime."; }
+    }
+
+    private Task NavigateAsync(string tab) => OnNavigate.InvokeAsync(tab);
+    private Task OpenSelectedAsync() => SelectedListAccount is null
+        ? Task.CompletedTask : OnOpenBrowser.InvokeAsync(SelectedListAccount);
+    private Task LoginSelectedAsync() => SelectedListAccount is null
+        ? Task.CompletedTask : OnLoginAgain.InvokeAsync(SelectedListAccount);
+}
