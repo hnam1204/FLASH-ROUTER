@@ -26,7 +26,7 @@
     <!-- 1. LEFT APPLICATION SIDEBAR -->
     <AppSidebar ActiveTab="@_activeTab"
                 OnTabSelected="HandleTabSelected"
-                HasNotifications="true" />
+                HasNotifications="@(_allAccounts.Any(a => a.Status is "Unverified" or "ReauthNeeded" or "ConnectionError" or "Failed"))" />
 
     <!-- 2. MAIN APPLICATION WORKSPACE -->
     <div class="master-workspace">
@@ -37,9 +37,11 @@
                    OnToggleTheme="ToggleThemeAsync" />
 
         <!-- CONSOLE BODY LAYOUT -->
-        <div class="console-body-layout">
+        <div class="console-body-layout @(_activeTab == "accounts" ? "" : "is-auxiliary")">
             <!-- CENTER MAIN CONSOLE -->
             <main class="main-console-content" role="main">
+                @if (_activeTab == "accounts")
+                {
                 <!-- Page Header matching reference image -->
                 <header class="console-page-header">
                     <div class="page-title-group">
@@ -95,9 +97,24 @@
                                TotalCount="@_filteredAccounts.Count"
                                OnPageChanged="HandlePageChanged"
                                OnPageSizeChanged="HandlePageSizeChanged" />
+                }
+                else
+                {
+                    <SidebarWorkspace ActiveTab="@_activeTab"
+                                      Accounts="@_allAccounts"
+                                      SelectedAccountId="@_selectedAccountId"
+                                      Diagnostics="@_diagnosticsSnapshot"
+                                      CurrentTheme="@_currentTheme"
+                                      OnNavigate="HandleTabSelected"
+                                      OnToggleTheme="ToggleThemeAsync"
+                                      OnOpenBrowser="HandleOpenAccount"
+                                      OnLoginAgain="HandleLoginAgain" />
+                }
             </main>
 
             <!-- 3. RIGHT ACCOUNT INSPECTOR -->
+            @if (_activeTab == "accounts")
+            {
             <AccountInspector Account="@_selectedAccountDetail"
                               ActivityEvents="@_selectedAccountActivities"
                               OnOpenAccount="HandleOpenAccountFromDetail"
@@ -106,6 +123,7 @@
                               OnDeleteAccount="HandleDeleteAccountFromDetail"
                               OnSaveNotes="HandleSaveNotes"
                               OnCopyEmail="HandleCopyEmail" />
+            }
         </div>
     </div>
 
@@ -173,8 +191,9 @@
     private int _failedAccountsCount = 0;
 
     private string _systemTimeString = DateTime.Now.ToString("dddd, dd 'Tháng' MM, yyyy HH:mm", new System.Globalization.CultureInfo("vi-VN"));
-    private string _systemStatusText = "Hệ thống hoạt động bình thường";
-    private bool _isSystemHealthy = true;
+    private string _systemStatusText = "Chưa xác minh trạng thái hệ thống";
+    private bool _isSystemHealthy = false;
+    private DiagnosticsVm? _diagnosticsSnapshot;
 
     // Dialogs state
     private bool _isAddAccountOpen = false;
@@ -233,20 +252,18 @@
         try
         {
             var diag = await DiagnosticsPort.GetDiagnosticsAsync();
-            _isSystemHealthy = diag.DurableStorageStatus.Contains("Ready", StringComparison.OrdinalIgnoreCase)
-                               || diag.DurableStorageStatus.Contains("Connected", StringComparison.OrdinalIgnoreCase)
-                               || diag.DurableStorageStatus.Contains("Healthy", StringComparison.OrdinalIgnoreCase)
-                               || diag.Mode.Contains("Integrated", StringComparison.OrdinalIgnoreCase)
-                               || diag.Mode.Contains("Preview", StringComparison.OrdinalIgnoreCase);
-
+            _diagnosticsSnapshot = diag;
+            _isSystemHealthy = diag.DurableStorageStatus.StartsWith("Connected", StringComparison.OrdinalIgnoreCase)
+                && diag.VaultStatus.StartsWith("Available", StringComparison.OrdinalIgnoreCase);
             _systemStatusText = _isSystemHealthy
-                ? "Hệ thống hoạt động bình thường"
-                : "Hệ thống đang kiểm tra trạng thái";
+                ? "SQLite và Vault sẵn sàng"
+                : "Một hoặc nhiều thành phần chưa xác minh";
         }
         catch
         {
-            _isSystemHealthy = true;
-            _systemStatusText = "Hệ thống hoạt động bình thường";
+            _diagnosticsSnapshot = null;
+            _isSystemHealthy = false;
+            _systemStatusText = "Không thể kiểm tra hệ thống";
         }
     }
 
@@ -341,8 +358,9 @@
         try
         {
             _selectedAccountDetail = await AccountReader.GetAccountDetailAsync(accountId);
-            var events = await ActivityPort.GetEventsAsync(accountId);
-            _selectedAccountActivities = events.ToList();
+            // IActivityUiPort currently resolves to PreviewActivityUiPort.
+            // Do not expose synthetic audit events as real account activity.
+            _selectedAccountActivities = [];
         }
         catch
         {
@@ -461,13 +479,10 @@
         }
     }
 
-    private void HandleEditAccount(AccountListItemVm account)
+    private async Task HandleEditAccount(AccountListItemVm account)
     {
-        _ = LoadAccountDetailAsync(account.AccountId).ContinueWith(_ =>
-        {
-            _isEditAccountOpen = true;
-            InvokeAsync(StateHasChanged);
-        });
+        await HandleAccountSelected(account.AccountId);
+        _isEditAccountOpen = _selectedAccountDetail is not null;
     }
 
     private void HandleEditAccountFromDetail(AccountDetailVm account)
@@ -491,14 +506,11 @@
         }
     }
 
-    private void HandleDeleteAccount(AccountListItemVm account)
+    private async Task HandleDeleteAccount(AccountListItemVm account)
     {
-        _ = LoadAccountDetailAsync(account.AccountId).ContinueWith(_ =>
-        {
-            _accountToDelete = _selectedAccountDetail;
-            _isDeleteAccountOpen = true;
-            InvokeAsync(StateHasChanged);
-        });
+        await HandleAccountSelected(account.AccountId);
+        _accountToDelete = _selectedAccountDetail;
+        _isDeleteAccountOpen = _accountToDelete is not null;
     }
 
     private void HandleDeleteAccountFromDetail(AccountDetailVm account)
