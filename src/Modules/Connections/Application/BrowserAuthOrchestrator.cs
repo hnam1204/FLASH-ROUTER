@@ -1305,7 +1305,10 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
     {
         var result = await RefreshCoreAsync(attempt, cancellationToken);
         var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
-        while (result.State == BrowserAuthState.EmailRequired
+        // A redirect may briefly expose neither the email nor the password form.
+        // Unknown is transitional here, not proof that the login flow has ended.
+        while ((result.State == BrowserAuthState.EmailRequired
+                || result.State == BrowserAuthState.Unknown)
             && DateTimeOffset.UtcNow < deadline)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
@@ -1323,7 +1326,11 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         var expectedState = attempt.State;
         var result = await RefreshCoreAsync(attempt, cancellationToken, totpRemainingSeconds);
         var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
-        while (result.State == expectedState
+        // A provider can replace the form with a short-lived loading screen.
+        // Wait for a recognizable next step, but retain the existing bounded
+        // timeout and fail-closed Unknown result if no safe step appears.
+        while ((result.State == expectedState
+                || result.State == BrowserAuthState.Unknown)
             && DateTimeOffset.UtcNow < deadline)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
