@@ -694,9 +694,12 @@ function home() {
   document.body.innerHTML = "<main><h1>Welcome home</h1><p>New chat</p><p>Sign out</p></main>";
 }
 function mfa() {
-  document.body.innerHTML = "<main><h1>Authenticator challenge</h1><input id=\"code\" name=\"code\" inputmode=\"numeric\" autocomplete=\"one-time-code\" aria-label=\"Authenticator code\"><button id=\"totp-continue\" type=\"button\">Continue</button><p id=\"error\"></p></main>";
+  const defaultMfa = "<main><h1>Authenticator challenge</h1><input id=\"code\" name=\"code\" inputmode=\"numeric\" autocomplete=\"one-time-code\" aria-label=\"Authenticator code\"><button id=\"totp-continue\" type=\"button\">Continue</button><p id=\"error\"></p></main>";
+  const localizedMfa = "<main><h1>Mã dùng một lần</h1><form><label for=\"code\">Mã dùng một lần</label><input id=\"code\" name=\"code\" autocomplete=\"one-time-code\" maxlength=\"6\" placeholder=\"Mã dùng một lần\" inputmode=\"numeric\" type=\"text\"><button id=\"totp-continue\" type=\"submit\" name=\"intent\" value=\"verify\" data-dd-action-name=\"Continue\">Tiếp tục</button></form><p id=\"error\"></p></main>";
+  document.body.innerHTML = variant === "delayed-transitions" ? localizedMfa : defaultMfa;
   const input = document.querySelector("#code");
-  document.querySelector("#totp-continue").addEventListener("click", () => {
+  document.querySelector("#totp-continue").addEventListener("click", (event) => {
+    event.preventDefault();
     if (input.value.length === 6) {
       if (variant === "invalid-totp") {
         document.querySelector("#error").textContent = "Invalid authenticator code";
