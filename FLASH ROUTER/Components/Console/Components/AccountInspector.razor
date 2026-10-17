@@ -96,21 +96,16 @@
             <div class="session-section">
                 <div class="session-header-row">
                     <span class="session-label">Tình trạng phiên</span>
-                    <span class="session-duration">Còn 12 ngày</span>
+                    <span class="session-duration">Chưa xác minh</span>
                 </div>
-                <div class="session-progress-row">
-                    <div class="session-progress-bar">
-                        <div class="session-progress-fill" style="width: 80%;"></div>
-                    </div>
-                    <span class="session-percentage">80%</span>
-                </div>
+                <p class="session-unknown">Chưa có nguồn xác thực thời hạn hoặc sức khỏe phiên web.</p>
                 <div class="session-meta-row">
-                    <span class="meta-label">Đăng nhập lần cuối</span>
-                    <span class="meta-value">@Account.UpdatedAt.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                    <span class="meta-label">Kiểm tra account gần nhất</span>
+                    <span class="meta-value">@(Account.LastCheckedAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Chưa ghi nhận")</span>
                 </div>
                 <div class="session-meta-row">
                     <span class="meta-label">2FA</span>
-                    <span class="mfa-status-badge">Đã bật</span>
+                    <span class="mfa-status-badge">Chưa xác minh</span>
                 </div>
             </div>
 
@@ -182,7 +177,7 @@
             <div class="activity-section">
                 <div class="activity-header">
                     <span class="activity-title">Nhật ký hoạt động gần đây</span>
-                    <a href="javascript:void(0)" class="view-all-link">Xem tất cả</a>
+                    <span class="view-all-link">Chưa có audit trail bền vững</span>
                 </div>
 
                 <div class="activity-list">
@@ -204,57 +199,7 @@
                     }
                     else
                     {
-                        <!-- Default Mock/Fallback Activity Log matching reference image -->
-                        <div class="activity-item">
-                            <span class="activity-dot dot-blue"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag info">[INFO]</span>
-                                    Kiểm tra phiên
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                        <div class="activity-item">
-                            <span class="activity-dot dot-green"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag pass">[PASS]</span>
-                                    Đăng nhập thành công
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.AddMinutes(-1).ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                        <div class="activity-item">
-                            <span class="activity-dot dot-blue"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag info">[INFO]</span>
-                                    Lấy thông tin tài khoản
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.AddMinutes(-1).ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                        <div class="activity-item">
-                            <span class="activity-dot dot-blue"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag info">[INFO]</span>
-                                    Gia hạn phiên tự động
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.AddDays(-1).ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                        <div class="activity-item">
-                            <span class="activity-dot dot-green"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag pass">[PASS]</span>
-                                    Phiên vẫn còn hiệu lực
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.AddDays(-1).ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
+                        <p class="inspector-no-events">Chưa có nhật ký được xác minh cho account này.</p>
                     }
                 </div>
             </div>
@@ -281,7 +226,7 @@
         if (Account != null && Account.AccountId != _currentAccountId)
         {
             _currentAccountId = Account.AccountId;
-            _editableNotes = Account.Notes ?? "Tài khoản chính để làm việc, ưu tiên duy trì.";
+            _editableNotes = Account.Notes ?? "";
         }
     }
 
@@ -322,27 +267,9 @@
     }
 
     private static string FormatPlan(string plan, string provider)
-    {
-        if (!string.IsNullOrWhiteSpace(plan) && !plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!plan.Contains(FormatProviderName(provider), StringComparison.OrdinalIgnoreCase))
-            {
-                return $"{FormatProviderName(provider)} {plan}";
-            }
-            return plan;
-        }
-
-        var name = FormatProviderName(provider);
-        return name switch
-        {
-            "ChatGPT" => "ChatGPT Plus",
-            "Claude" => "Claude Pro",
-            "Gemini" => "Gemini Advanced",
-            "Perplexity" => "Perplexity Pro",
-            "HUFLIT" => "HUFLIT Portal",
-            _ => "Standard"
-        };
-    }
+        => string.IsNullOrWhiteSpace(plan) || plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase)
+            ? "Gói chưa xác minh"
+            : "Ghi nhận: " + plan;
 
     private static string FormatSeverity(string severity)
     {
