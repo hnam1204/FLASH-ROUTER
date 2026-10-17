@@ -28,3 +28,5 @@
 .workspace-action:focus-visible{outline:3px solid var(--accent-teal);outline-offset:3px}
 @media(max-width:800px){.workspace-stat-grid{grid-template-columns:1fr 1fr}.workspace-heading{flex-direction:column}}
 @media(max-width:520px){.workspace-stat-grid{grid-template-columns:1fr}.workspace-facts{grid-template-columns:1fr;gap:4px}.workspace-facts dd{margin-bottom:10px}.workspace-row{align-items:flex-start;flex-direction:column;gap:5px}.sidebar-workspace{gap:12px}}
+
+.workspace-load-error {border:1px solid var(--state-warning);border-radius:9px;padding:12px 14px;margin:0;color:var(--text-primary);background:var(--app-elevated);font-size:13px;line-height:1.5}
