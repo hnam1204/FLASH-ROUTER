@@ -5,6 +5,7 @@ using FlashAI.Modules.Accounts.Contracts;
 using FlashAI.Modules.Accounts.Domain;
 using FlashAI.Modules.Accounts.Features.BrowseAccounts.Application;
 using FlashAI.Modules.Accounts.Persistence;
+using FlashAI.Modules.Activity.Persistence;
 using FlashAI.Modules.Connections.Domain;
 using FlashAI.Modules.Connections.Persistence;
 using Microsoft.Data.Sqlite;
@@ -200,6 +201,7 @@ public sealed class SqliteAccountDatabaseFixture : IAsyncLifetime
         services.AddSingleton<SqliteConnectionFactory>();
         services.AddSingleton<IFlashAiModelContributor, AccountModelContributor>();
         services.AddSingleton<IFlashAiModelContributor, ConnectionModelContributor>();
+        services.AddSingleton<IFlashAiModelContributor, ActivityModelContributor>();
         services.AddDbContextFactory<FlashAiDbContext>((serviceProvider, options) =>
         {
             options.UseSqlite(

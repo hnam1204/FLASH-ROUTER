@@ -208,7 +208,6 @@ public sealed class SqliteProviderConnectionCatalog : IProviderConnectionCatalog
             join reference in db.Set<ProviderCredentialReferenceRecord>().AsNoTracking()
                 on connection.Id equals reference.ConnectionId
             where connection.Status == ConnectionStatus.CredentialStored || connection.Status == ConnectionStatus.Authorized
-            orderby connection.ProviderId, connection.CreatedAtUtc
             select new ProviderConnectionSummary(
                 connection.Id,
                 connection.AccountId,
@@ -219,7 +218,14 @@ public sealed class SqliteProviderConnectionCatalog : IProviderConnectionCatalog
                 connection.Status,
                 reference.CredentialId,
                 connection.CreatedAtUtc)).ToArrayAsync(cancellationToken);
-        return items;
+
+        // SQLite cannot translate DateTimeOffset ordering. The filtered set is
+        // materialized first, then deterministically ordered without SQL ORDER BY.
+        return items
+            .OrderBy(item => item.ProviderId, StringComparer.Ordinal)
+            .ThenBy(item => item.CreatedAtUtc)
+            .ThenBy(item => item.ConnectionId)
+            .ToArray();
     }
 
     public async Task<IReadOnlyList<ProviderConnectionSummary>> ListForAccountAsync(Guid accountId, CancellationToken cancellationToken = default)

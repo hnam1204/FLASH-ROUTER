@@ -7,6 +7,7 @@ using FlashAI.Modules.Connections.Application;
 using FlashAI.Modules.Connections.Contracts;
 using FlashAI.Modules.Connections.Domain;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FlashAI.IntegrationTests;
@@ -41,7 +42,7 @@ public sealed class AuthBrowser11Tests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ReadinessDistinguishesStoredReferenceFromLockedVault()
+    public async Task ReadinessUsesAutomaticWindowsBoundAccessWithoutUnlockState()
     {
         var accountId = await CreateAccountAsync("auth11-readiness@example.test");
         var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
@@ -51,18 +52,63 @@ public sealed class AuthBrowser11Tests : IAsyncLifetime
         Assert.True(saved.IsSuccess, saved.Message);
 
         var reader = new BrowserAuthCredentialReader(_database.ContextFactory, _vault, _vaultAccess);
-        var locked = await reader.CheckReadinessAsync(accountId);
-        Assert.Equal(BrowserAuthCredentialReadinessKind.VaultLocked, locked.Kind);
-        Assert.False(locked.IsReady);
-        Assert.NotNull(locked.ConnectionId);
-        Assert.NotNull(locked.CredentialReferenceId);
-
-        _vaultAccess.SetUnlocked(true);
         var ready = await reader.CheckReadinessAsync(accountId);
         Assert.Equal(BrowserAuthCredentialReadinessKind.CredentialReady, ready.Kind);
         Assert.True(ready.IsReady);
-        Assert.Equal(locked.ConnectionId, ready.ConnectionId);
-        Assert.Equal(locked.CredentialReferenceId, ready.CredentialReferenceId);
+        Assert.NotNull(ready.ConnectionId);
+        Assert.NotNull(ready.CredentialReferenceId);
+    }
+
+    [Fact]
+    public async Task CredentialProtectionMetadataPersistsWithoutSecretColumns()
+    {
+        var accountId = await CreateAccountAsync("auth11-metadata@example.test");
+        var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
+        var saved = await credentialPort.SaveAsync(
+            accountId,
+            new ChatGptCredentialInput("auth11-metadata@example.test", "SyntheticMetadata-1", null, false));
+        Assert.True(saved.IsSuccess, saved.Message);
+
+        await using var context = await _database.ContextFactory.CreateDbContextAsync();
+        var reference = await context.Set<ProviderCredentialReferenceRecord>().SingleAsync();
+
+        Assert.Equal(CredentialProtectionMetadata.CurrentScheme, reference.ProtectionScheme);
+        Assert.Equal(CredentialProtectionMetadata.CurrentFormatVersion, reference.ProtectionFormatVersion);
+        Assert.NotEqual(Guid.Empty, reference.ConnectionId);
+        Assert.DoesNotContain("SyntheticMetadata-1", reference.VaultKey, StringComparison.Ordinal);
+
+        var columns = await SqliteAccountDatabaseFixture.ReadColumnsAsync(context, "ProviderCredentialReferences");
+        Assert.DoesNotContain(columns, column => column.Contains("password", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(columns, column => column.Contains("totp", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(columns, column => column.Contains("secret", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task LegacyProtectionMetadataFailsClosedAndRequiresReplacement()
+    {
+        var accountId = await CreateAccountAsync("auth11-legacy@example.test");
+        var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
+        var saved = await credentialPort.SaveAsync(
+            accountId,
+            new ChatGptCredentialInput("auth11-legacy@example.test", "SyntheticLegacy-1", null, false));
+        Assert.True(saved.IsSuccess, saved.Message);
+
+        await using (var context = await _database.ContextFactory.CreateDbContextAsync())
+        {
+            var reference = await context.Set<ProviderCredentialReferenceRecord>().SingleAsync();
+            await context.Database.ExecuteSqlInterpolatedAsync($"UPDATE ProviderCredentialReferences SET ProtectionFormatVersion = 99 WHERE Id = {reference.Id}");
+        }
+
+        var reader = new BrowserAuthCredentialReader(_database.ContextFactory, _vault, _vaultAccess);
+        var readiness = await reader.CheckReadinessAsync(accountId);
+        var result = await reader.ReadAsync(accountId);
+
+        Assert.False(readiness.IsReady);
+        Assert.Equal(BrowserAuthCredentialReadinessKind.LegacyUnlockRequired, readiness.Kind);
+        Assert.Equal("LEGACY_UNLOCK_REQUIRED", readiness.Status);
+        Assert.False(result.IsSuccess);
+        Assert.Equal("LEGACY_UNLOCK_REQUIRED", result.Status);
+        Assert.Null(result.Credential);
     }
 
     [Fact]
@@ -74,8 +120,6 @@ public sealed class AuthBrowser11Tests : IAsyncLifetime
             accountId,
             new ChatGptCredentialInput("auth11-replace@example.test", "SyntheticOldReplacement-1", null, false));
         Assert.True(saved.IsSuccess, saved.Message);
-        _vaultAccess.SetUnlocked(true);
-
         var reader = new BrowserAuthCredentialReader(_database.ContextFactory, _vault, _vaultAccess);
         var before = await reader.GetReferenceSnapshotAsync(accountId);
         var replaced = await credentialPort.ReplaceAsync(
@@ -102,8 +146,6 @@ public sealed class AuthBrowser11Tests : IAsyncLifetime
             accountId,
             new ChatGptCredentialInput("auth11-launchfailed@example.test", "SyntheticLaunchFailed-1", null, false));
         Assert.True(saved.IsSuccess, saved.Message);
-        _vaultAccess.SetUnlocked(true);
-
         await using var orchestrator = new BrowserAuthOrchestrator(
             new HistoricalFailureProfileManager(accountId),
             new NoopSessionFactory(),

@@ -54,6 +54,7 @@
             <div class="flash-modal-footer">
                 @if (IsRunning)
                 {
+                    <button type="button" class="flash-btn flash-btn-ghost" @onclick="HandleHide">Ẩn tiến trình</button>
                     <button type="button" class="flash-btn flash-btn-outline" @onclick="HandleCancel">Hủy thao tác</button>
                 }
                 else
@@ -74,8 +75,10 @@
     [Parameter] public bool IsRunning { get; set; }
     [Parameter] public bool IsSuccess { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnHide { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
 
     private async Task HandleClose() => await OnClose.InvokeAsync();
+    private async Task HandleHide() => await OnHide.InvokeAsync();
     private async Task HandleCancel() => await OnCancel.InvokeAsync();
 }

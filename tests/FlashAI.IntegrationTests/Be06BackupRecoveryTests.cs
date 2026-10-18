@@ -6,6 +6,7 @@ using FlashAI.Foundation.Security;
 using FlashAI.Modules.Accounts.Application;
 using FlashAI.Modules.Accounts.Contracts;
 using FlashAI.Modules.Accounts.Persistence;
+using FlashAI.Modules.Activity.Persistence;
 using FlashAI.Modules.BackupRestore.Application;
 using FlashAI.Modules.BackupRestore.Contracts;
 using FlashAI.Modules.Connections.Persistence;
@@ -126,6 +127,7 @@ public sealed class Be06BackupRecoveryTests
             services.AddSingleton<SqliteConnectionFactory>();
             services.AddSingleton<IFlashAiModelContributor, AccountModelContributor>();
             services.AddSingleton<IFlashAiModelContributor, ConnectionModelContributor>();
+            services.AddSingleton<IFlashAiModelContributor, ActivityModelContributor>();
             services.AddDbContextFactory<FlashAiDbContext>((serviceProvider, options) =>
             {
                 options.UseSqlite(

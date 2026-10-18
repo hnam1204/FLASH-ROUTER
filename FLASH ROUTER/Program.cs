@@ -33,7 +33,7 @@ builder.Services
     .AddImportExportModule(builder.Configuration)
     .AddRemindersModule()
     .AddBackupRestoreModule(builder.Configuration)
-    .AddActivityModule()
+     .AddActivityModule(builder.Configuration)
     .AddSettingsModule()
     .AddDiagnosticsModule();
 

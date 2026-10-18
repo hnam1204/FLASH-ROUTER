@@ -17,7 +17,9 @@ public sealed class ProviderCredentialReferenceRecord
         string vaultKey,
         string? scope,
         DateTimeOffset createdAtUtc,
-        DateTimeOffset updatedAtUtc)
+        DateTimeOffset updatedAtUtc,
+        string protectionScheme = CredentialProtectionMetadata.CurrentScheme,
+        int protectionFormatVersion = CredentialProtectionMetadata.CurrentFormatVersion)
     {
         Id = id;
         ConnectionId = connectionId;
@@ -28,6 +30,8 @@ public sealed class ProviderCredentialReferenceRecord
         Scope = scope;
         CreatedAtUtc = createdAtUtc;
         UpdatedAtUtc = updatedAtUtc;
+        ProtectionScheme = protectionScheme;
+        ProtectionFormatVersion = protectionFormatVersion;
     }
 
     public Guid Id { get; private set; }
@@ -39,6 +43,15 @@ public sealed class ProviderCredentialReferenceRecord
     public string? Scope { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset UpdatedAtUtc { get; private set; }
+    public string ProtectionScheme { get; private set; } = CredentialProtectionMetadata.CurrentScheme;
+    public int ProtectionFormatVersion { get; private set; } = CredentialProtectionMetadata.CurrentFormatVersion;
+}
+
+public static class CredentialProtectionMetadata
+{
+    public const string CurrentScheme = "AspNetCoreDataProtection-DPAPI-CurrentUser";
+    public const int CurrentFormatVersion = 1;
+    public const string CurrentScope = "WindowsCurrentUser";
 }
 
 public sealed class ProviderCapabilityDefinitionRecord
@@ -201,4 +214,16 @@ public sealed class ProviderSyncStateRecord
     public DateTimeOffset? LastSuccessfulSyncAtUtc { get; private set; }
     public int FailureCount { get; private set; }
     public DateTimeOffset UpdatedAtUtc { get; private set; }
+
+    public void UpdateSchedule(
+        DateTimeOffset? nextEligibleAtUtc,
+        DateTimeOffset? lastSuccessfulSyncAtUtc,
+        int failureCount,
+        DateTimeOffset updatedAtUtc)
+    {
+        NextEligibleAtUtc = nextEligibleAtUtc;
+        LastSuccessfulSyncAtUtc = lastSuccessfulSyncAtUtc;
+        FailureCount = Math.Max(0, failureCount);
+        UpdatedAtUtc = updatedAtUtc;
+    }
 }

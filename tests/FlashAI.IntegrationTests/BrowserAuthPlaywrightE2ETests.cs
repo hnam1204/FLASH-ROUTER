@@ -86,6 +86,16 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
         Assert.Equal("BROWSER_SESSION_OBSERVED", observed.Status);
         Assert.NotNull(observed.Observation);
 
+        var accountReader = new SqliteAccountWorkspaceReader(_database.ContextFactory);
+        var persisted = await accountReader.GetAccountDetailAsync(accountA);
+        Assert.NotNull(persisted);
+        Assert.Equal("AuthenticatedSessionConfirmed", persisted!.AuthenticationState);
+        Assert.Equal("IdentityVerified", persisted.IdentityVerificationState);
+        Assert.Equal("headed-a@example.test", persisted.LastObservedProviderEmail);
+        Assert.Contains("account-menu", persisted.LastIdentityEvidenceSource, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(started.AttemptId, persisted.LastAuthenticationAttemptId);
+        Assert.NotNull(persisted.LastAuthenticatedSessionConfirmedAtUtc);
+
         var closed = await orchestrator.CancelAsync(started.AttemptId.Value);
         Assert.Equal(BrowserAuthState.Cancelled, closed.State);
 
@@ -361,8 +371,12 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
         RequireChrome();
         foreach (var scenario in new[]
         {
-            (Variant: "invalid-password", ExpectedState: BrowserAuthState.Unknown, ExpectedStatus: "UNKNOWN_LOGIN_STATE"),
-            (Variant: "invalid-totp", ExpectedState: BrowserAuthState.MfaRequired, ExpectedStatus: "MFA_REQUIRED")
+            // Invalid credentials are a classified human-recovery outcome, not an unknown DOM state.
+            (Variant: "invalid-password", ExpectedState: BrowserAuthState.HumanActionRequired, ExpectedStatus: "INVALID_CREDENTIALS"),
+            // The page detector reports MfaRequired, but after TOTP has already
+            // been submitted the orchestrator stops for human takeover so it
+            // cannot retry the same credential in a loop.
+            (Variant: "invalid-totp", ExpectedState: BrowserAuthState.WaitingForUser, ExpectedStatus: "ADDITIONAL_MFA_REQUIRED")
         })
         {
             var accountId = await CreateAccountAsync($"{scenario.Variant}@example.test", "SyntheticPassword-456");
@@ -389,6 +403,8 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
                 var totp = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillTotp, confirmed: true);
                 Assert.Equal(scenario.ExpectedState, totp.State);
                 Assert.Equal(scenario.ExpectedStatus, totp.Status);
+                Assert.False(totp.IsSuccess);
+                Assert.Null(totp.NextAction);
             }
 
             await orchestrator.CancelAsync(started.AttemptId.Value);
@@ -416,6 +432,58 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
         Assert.Equal("BROWSER_CLOSED", closed.Status);
     }
 
+    [Fact]
+    public async Task HeadedPlaywrightPersistsIdentityMismatchWithoutPromotingIt()
+    {
+        RequireChrome();
+        var accountId = await CreateAccountAsync("selected@example.test", "SyntheticPassword-Mismatch");
+        using var profileManager = CreateProfileManager();
+        var originPolicy = CreateLocalOriginPolicy();
+        var sessionFactory = CreateSessionFactory(originPolicy, new Uri(_server.LoginUri, "?variant=identity-mismatch"));
+        await using var orchestrator = CreateOrchestrator(profileManager, sessionFactory, originPolicy);
+
+        var started = await orchestrator.StartAsync(accountId);
+        var email = await orchestrator.ConfirmAndFillAsync(started.AttemptId!.Value, BrowserAuthAction.FillEmail, true);
+        Assert.Equal(BrowserAuthState.PasswordRequired, email.State);
+        var password = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, true);
+        Assert.Equal(BrowserAuthState.MfaRequired, password.State);
+        var result = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillTotp, true);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(BrowserAuthState.IdentityMismatch, result.State);
+        Assert.Equal("IDENTITY_MISMATCH", result.Status);
+        Assert.Equal(IdentityVerificationStatus.Mismatch, result.ObservationResult?.IdentityStatus);
+
+        var persisted = await new SqliteAccountWorkspaceReader(_database.ContextFactory).GetAccountDetailAsync(accountId);
+        Assert.Equal("Mismatch", persisted!.IdentityVerificationState);
+        Assert.Equal("different@example.test", persisted.LastObservedProviderEmail);
+        await orchestrator.CancelAsync(started.AttemptId.Value);
+    }
+
+    [Fact]
+    public async Task HeadedPlaywrightKeepsSessionObservedWhenIdentityEvidenceIsUnavailable()
+    {
+        RequireChrome();
+        var accountId = await CreateAccountAsync("unverified@example.test", "SyntheticPassword-Unverified");
+        using var profileManager = CreateProfileManager();
+        var originPolicy = CreateLocalOriginPolicy();
+        var sessionFactory = CreateSessionFactory(originPolicy, new Uri(_server.LoginUri, "?variant=identity-unavailable"));
+        await using var orchestrator = CreateOrchestrator(profileManager, sessionFactory, originPolicy);
+
+        var started = await orchestrator.StartAsync(accountId);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId!.Value, BrowserAuthAction.FillEmail, true);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, true);
+        var result = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillTotp, true);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(BrowserAuthState.BrowserSessionObserved, result.State);
+        Assert.Equal(IdentityVerificationStatus.Unverified, result.ObservationResult?.IdentityStatus);
+        var persisted = await new SqliteAccountWorkspaceReader(_database.ContextFactory).GetAccountDetailAsync(accountId);
+        Assert.Equal("AuthenticatedSessionConfirmed", persisted!.AuthenticationState);
+        Assert.Equal("Unverified", persisted.IdentityVerificationState);
+        await orchestrator.CancelAsync(started.AttemptId.Value);
+    }
+
     private BrowserProfileManager CreateProfileManager()
         => new(
             _database.ContextFactory,
@@ -432,7 +500,8 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
             new StableBrowserPageStateDetector(originPolicy),
             new BrowserAuthCredentialReader(_database.ContextFactory, _vault, _vaultAccess),
             new Rfc6238TotpGenerator(),
-            originPolicy);
+            originPolicy,
+            authenticationStateStore: new SqliteAccountAuthenticationStateStore(_database.ContextFactory));
 
     private LocalPlaywrightSessionFactory CreateSessionFactory(
         Func<Uri?, bool> originPolicy,
@@ -613,7 +682,7 @@ internal sealed class MockAuthenticationServer : IAsyncDisposable
     {
         if (!string.IsNullOrWhiteSpace(session))
         {
-            return HomeHtml(session);
+            return HomeHtml(session, variant);
         }
 
         return variant switch
@@ -630,7 +699,7 @@ internal sealed class MockAuthenticationServer : IAsyncDisposable
     {
         if (!string.IsNullOrWhiteSpace(session))
         {
-            return HomeHtml(session);
+            return HomeHtml(session, variant);
         }
 
         return variant switch
@@ -648,8 +717,14 @@ internal sealed class MockAuthenticationServer : IAsyncDisposable
         };
     }
 
-    private static string HomeHtml(string session)
-        => $"<main><h1>Welcome home</h1><p>New chat</p><p>Signed in as {System.Net.WebUtility.HtmlEncode(session)}</p><button>Sign out</button></main>";
+    private static string HomeHtml(string session, string variant)
+    {
+        var observedEmail = variant == "identity-mismatch" ? "different@example.test" : session;
+        var identityMenu = variant == "identity-unavailable"
+            ? string.Empty
+            : $"<button id=\"account-menu\" data-testid=\"account-menu\" aria-label=\"Account menu\">{System.Net.WebUtility.HtmlEncode(observedEmail)}</button>";
+        return $"<main><h1>Welcome home</h1><p>New chat</p><p>Signed in as {System.Net.WebUtility.HtmlEncode(observedEmail)}</p>{identityMenu}<button>Sign out</button></main>";
+    }
 
     private static string LoginHtml(string variant)
         => """
@@ -662,7 +737,12 @@ let email = "";
 function error(text) { document.body.innerHTML = "<main><h1>Login error</h1><p>" + text + "</p></main>"; }
 function home() {
   document.cookie = "mock_session=" + encodeURIComponent(email) + "; Max-Age=3600; Path=/; SameSite=Lax";
-  document.body.innerHTML = "<main><h1>Welcome home</h1><p>New chat</p><p>Sign out</p></main>";
+  const identityMenu = variant === "identity-unavailable" ? "" : "<button id=\"account-menu\" data-testid=\"account-menu\" aria-label=\"Account menu\"></button>";
+  document.body.innerHTML = "<main><h1>Welcome home</h1><p>New chat</p><p id=\"signed-in-as\"></p>" + identityMenu + "<button>Sign out</button></main>";
+  const observedEmail = variant === "identity-mismatch" ? "different@example.test" : email;
+  document.querySelector("#signed-in-as").textContent = "Signed in as " + observedEmail;
+  const accountMenu = document.querySelector("#account-menu");
+  if (accountMenu) accountMenu.textContent = observedEmail;
 }
 function mfa() {
   document.body.innerHTML = "<main><h1>Authenticator challenge</h1><input id=\"code\" name=\"code\" inputmode=\"numeric\" autocomplete=\"one-time-code\" aria-label=\"Authenticator code\"><button id=\"totp-continue\" type=\"button\">Continue</button><p id=\"error\"></p></main>";

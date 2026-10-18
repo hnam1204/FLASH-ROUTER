@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.ComponentModel.DataAnnotations;
+using FlashAI.Foundation.Contracts;
 using FlashAI.Foundation.Persistence;
 using FlashAI.Foundation.Security;
 using FlashAI.Modules.Connections.Contracts;
@@ -15,16 +17,17 @@ public sealed class SqliteAccountCredentialUiPort : IAccountCredentialUiPort
     private const string ProviderId = "openai-chatgpt";
     private readonly IDbContextFactory<FlashAiDbContext> _contextFactory;
     private readonly ISecretVault _vault;
-    private readonly IVaultAccessState? _vaultAccess;
+    private readonly IAuditSink? _auditSink;
 
     public SqliteAccountCredentialUiPort(
         IDbContextFactory<FlashAiDbContext> contextFactory,
         ISecretVault vault,
-        IVaultAccessState? vaultAccess = null)
+        IVaultAccessState? vaultAccess = null,
+        IAuditSink? auditSink = null)
     {
         _contextFactory = contextFactory;
         _vault = vault;
-        _vaultAccess = vaultAccess;
+        _auditSink = auditSink;
     }
 
     public async Task<CredentialConnectionResult> SaveAsync(
@@ -95,9 +98,11 @@ public sealed class SqliteAccountCredentialUiPort : IAccountCredentialUiPort
                 credentialId,
                 ProviderCredentialKind.ManualWebCredential,
                 vaultKey,
-                null,
+                CredentialProtectionMetadata.CurrentScope,
                 now,
-                now));
+                now,
+                CredentialProtectionMetadata.CurrentScheme,
+                CredentialProtectionMetadata.CurrentFormatVersion));
             context.Add(new ProviderSyncStateRecord(
                 Guid.NewGuid(),
                 connectionId,
@@ -127,6 +132,7 @@ public sealed class SqliteAccountCredentialUiPort : IAccountCredentialUiPort
             CryptographicOperations.ZeroMemory(payload);
         }
 
+        await RecordAuditAsync(accountId, "CredentialStored", "Provider credential reference stored in the encrypted local vault.", "Info");
         return CredentialConnectionResult.Success(
             "CredentialStored",
             "Đã lưu credential trong Vault mã hóa. Hãy mở Chrome bằng profile của tài khoản để hoàn tất đăng nhập trên website chính thức; trạng thái này không đồng nghĩa đã đăng nhập.",
@@ -137,25 +143,43 @@ public sealed class SqliteAccountCredentialUiPort : IAccountCredentialUiPort
         Guid accountId,
         ChatGptCredentialInput input,
         CancellationToken cancellationToken = default)
+        => await UpdateAsync(
+            accountId,
+            new CredentialUpdateInput(
+                input.Email,
+                CredentialPasswordUpdate.Replace,
+                input.Password,
+                CredentialTotpUpdate.Replace,
+                input.TotpSeed),
+            cancellationToken);
+
+    public async Task<CredentialConnectionResult> UpdateAsync(
+        Guid accountId,
+        CredentialUpdateInput input,
+        CancellationToken cancellationToken = default)
     {
         if (accountId == Guid.Empty)
         {
             return CredentialConnectionResult.Failure("ACCOUNT_REQUIRED", "Không xác định được tài khoản cần cập nhật.");
         }
 
-        if (string.IsNullOrWhiteSpace(input.Email) || string.IsNullOrEmpty(input.Password))
+        var email = input.Email.Trim();
+        if (string.IsNullOrWhiteSpace(email) || email.Length > 254 || !new EmailAddressAttribute().IsValid(email))
         {
-            return CredentialConnectionResult.Failure("VALIDATION_FAILED", "Email và mật khẩu là bắt buộc.");
+            return CredentialConnectionResult.Failure("VALIDATION_FAILED", "Email cập nhật không hợp lệ.");
         }
 
-        if (!string.IsNullOrWhiteSpace(input.TotpSeed) && !LooksLikeBase32Seed(input.TotpSeed))
+        if (input.PasswordAction == CredentialPasswordUpdate.Replace
+            && string.IsNullOrEmpty(input.ReplacementPassword))
+        {
+            return CredentialConnectionResult.Failure("PASSWORD_REQUIRED", "Hãy nhập mật khẩu mới hoặc chọn giữ mật khẩu hiện tại.");
+        }
+
+        if (input.TotpAction == CredentialTotpUpdate.Replace
+            && !string.IsNullOrWhiteSpace(input.ReplacementTotpSeed)
+            && !LooksLikeBase32Seed(input.ReplacementTotpSeed))
         {
             return CredentialConnectionResult.Failure("TOTP_SEED_INVALID", "TOTP seed không có định dạng Base32 hợp lệ.");
-        }
-
-        if (_vaultAccess is not null && !_vaultAccess.IsUnlocked)
-        {
-            return CredentialConnectionResult.Failure("VAULT_LOCKED", "Hãy mở khóa Vault trước khi cập nhật credential.");
         }
 
         if (!await _vault.IsAvailableAsync(cancellationToken))
@@ -190,16 +214,60 @@ public sealed class SqliteAccountCredentialUiPort : IAccountCredentialUiPort
         }
 
         var accountEmail = await GetAccountEmailAsync(context, accountId, cancellationToken);
-        if (string.IsNullOrWhiteSpace(accountEmail)
-            || !accountEmail.Equals(input.Email.Trim(), StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(accountEmail))
         {
-            return CredentialConnectionResult.Failure("ACCOUNT_EMAIL_MISMATCH", "Email cập nhật phải khớp tài khoản đang chọn.");
+            return CredentialConnectionResult.Failure("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản đang cập nhật.");
         }
 
-        var payload = JsonSerializer.SerializeToUtf8Bytes(new StoredChatGptCredential(
-            input.Email.Trim(),
-            input.Password,
-            string.IsNullOrWhiteSpace(input.TotpSeed) ? null : input.TotpSeed.Trim()));
+        if (existing.Reference.ProtectionFormatVersion != CredentialProtectionMetadata.CurrentFormatVersion
+            || !existing.Reference.ProtectionScheme.Equals(CredentialProtectionMetadata.CurrentScheme, StringComparison.Ordinal))
+        {
+            return CredentialConnectionResult.Failure(
+                "LEGACY_UNLOCK_REQUIRED",
+                "Credential dùng protection format cũ; hãy migration hoặc thay credential trước khi cập nhật.");
+        }
+
+        ReadOnlyMemory<byte>? existingPayload;
+        try
+        {
+            existingPayload = await _vault.ReadAsync(existing.Reference.VaultKey, cancellationToken);
+        }
+        catch (SecretVaultException exception)
+        {
+            return CredentialConnectionResult.Failure(exception.ErrorCode, "Không thể đọc credential hiện hữu từ Vault.");
+        }
+
+        if (existingPayload is null)
+        {
+            return CredentialConnectionResult.Failure("CREDENTIAL_UNAVAILABLE", "Credential hiện hữu không còn trong Vault.");
+        }
+
+        StoredChatGptCredential? existingCredential;
+        try
+        {
+            existingCredential = JsonSerializer.Deserialize<StoredChatGptCredential>(existingPayload.Value.Span);
+        }
+        catch (JsonException)
+        {
+            existingCredential = null;
+        }
+
+        if (existingCredential is null || string.IsNullOrEmpty(existingCredential.Password))
+        {
+            return CredentialConnectionResult.Failure("CREDENTIAL_CORRUPT", "Credential hiện hữu không có payload hợp lệ.");
+        }
+
+        var password = input.PasswordAction == CredentialPasswordUpdate.Keep
+            ? existingCredential.Password
+            : input.ReplacementPassword!;
+        var totpSeed = input.TotpAction switch
+        {
+            CredentialTotpUpdate.Keep => existingCredential.TotpSeed,
+            CredentialTotpUpdate.Replace => string.IsNullOrWhiteSpace(input.ReplacementTotpSeed) ? null : input.ReplacementTotpSeed.Trim(),
+            _ => null
+        };
+
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new StoredChatGptCredential(email, password, totpSeed));
         try
         {
             // FileSecretVault replaces the same vault entry atomically; the existing
@@ -221,9 +289,10 @@ public sealed class SqliteAccountCredentialUiPort : IAccountCredentialUiPort
             CryptographicOperations.ZeroMemory(payload);
         }
 
+        await RecordAuditAsync(accountId, "CredentialUpdated", "Provider credential reference updated in the encrypted local vault.", "Info");
         return CredentialConnectionResult.Success(
-            "CredentialReplaced",
-            "Đã thay thế credential của đúng tài khoản trong Vault mã hóa.",
+            "CredentialUpdated",
+            "Đã cập nhật credential của tài khoản trong Vault mã hóa.",
             existing.Connection.Id);
     }
 
@@ -270,6 +339,23 @@ public sealed class SqliteAccountCredentialUiPort : IAccountCredentialUiPort
         }
     }
 
+    private async Task RecordAuditAsync(Guid accountId, string eventType, string summary, string severity)
+    {
+        if (_auditSink is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _auditSink.WriteAsync(accountId, eventType, summary, severity);
+        }
+        catch
+        {
+            // Credential persistence already completed; audit failure must not alter it.
+        }
+    }
+
 }
 
 public sealed class PreviewAccountCredentialUiPort : IAccountCredentialUiPort
@@ -285,6 +371,14 @@ public sealed class PreviewAccountCredentialUiPort : IAccountCredentialUiPort
     public Task<CredentialConnectionResult> ReplaceAsync(
         Guid accountId,
         ChatGptCredentialInput input,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(CredentialConnectionResult.Failure(
+            "PREVIEW_CREDENTIALS_DISABLED",
+            "Preview mode không cập nhật credential. Chuyển sang Integrated mode để sử dụng Vault mã hóa thật."));
+
+    public Task<CredentialConnectionResult> UpdateAsync(
+        Guid accountId,
+        CredentialUpdateInput input,
         CancellationToken cancellationToken = default)
         => Task.FromResult(CredentialConnectionResult.Failure(
             "PREVIEW_CREDENTIALS_DISABLED",

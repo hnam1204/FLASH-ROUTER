@@ -86,6 +86,8 @@ public sealed class ConnectionModelContributor : IFlashAiModelContributor
         credential.Property(x => x.CredentialKind).HasConversion<string>().HasMaxLength(40).IsRequired();
         credential.Property(x => x.VaultKey).HasMaxLength(300).IsRequired();
         credential.Property(x => x.Scope).HasMaxLength(200);
+        credential.Property(x => x.ProtectionScheme).HasMaxLength(100).IsRequired();
+        credential.Property(x => x.ProtectionFormatVersion).IsRequired();
         credential.HasIndex(x => x.ConnectionId).IsUnique();
         credential.HasIndex(x => new { x.ProviderId, x.CredentialId }).IsUnique();
         credential.HasOne<ProviderConnectionRecord>()

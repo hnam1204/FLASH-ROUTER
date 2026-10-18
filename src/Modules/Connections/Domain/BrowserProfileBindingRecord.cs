@@ -49,6 +49,12 @@ public sealed class BrowserProfileBindingRecord
         State = BrowserProfileState.LaunchFailed.ToString();
         ConcurrencyVersion++;
     }
+
+    public void Archive()
+    {
+        State = BrowserProfileState.Archived.ToString();
+        ConcurrencyVersion++;
+    }
 }
 
 public enum BrowserProfileState

@@ -12,4 +12,17 @@ public sealed record AccountListItemVm(
     string RecordedPlan,
     DateTimeOffset TrackingDate,
     IReadOnlyList<string> Tags,
-    bool IsArchived = false);
+    bool IsArchived = false,
+    string AuthenticationState = "NotStarted",
+    string IdentityVerificationState = "NotChecked",
+    DateTimeOffset? LastAuthenticationAttemptAtUtc = null,
+    DateTimeOffset? LastBrowserSessionObservedAtUtc = null,
+    DateTimeOffset? LastAuthenticatedSessionConfirmedAtUtc = null,
+    DateTimeOffset? LastIdentityVerifiedAtUtc = null,
+    DateTimeOffset? LastObservationAtUtc = null,
+    string? LastObservationEvidenceSource = null,
+    string? LastObservationErrorCode = null,
+    Guid? LastAuthenticationAttemptId = null,
+    string? LastObservedProviderEmail = null,
+    string? LastIdentityEvidenceSource = null,
+    string? LastIdentityReasonCode = null);

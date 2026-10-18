@@ -66,11 +66,6 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
         Assert.Equal(BrowserAuthState.PasswordRequired, email.State);
         Assert.Equal("synthetic-auth@example.test", session.FilledValues[BrowserAuthField.Email]);
 
-        var locked = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, confirmed: true);
-        Assert.Equal("VAULT_LOCKED", locked.Status);
-        Assert.False(session.FilledValues.ContainsKey(BrowserAuthField.Password));
-
-        _vaultAccess.SetUnlocked(true);
         var password = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, confirmed: true);
         Assert.Equal(BrowserAuthState.MfaRequired, password.State);
         Assert.Equal("SyntheticPassword-123", session.FilledValues[BrowserAuthField.Password]);
@@ -92,8 +87,6 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
             accountId,
             new ChatGptCredentialInput("synthetic-auto@example.test", "SyntheticAutoPassword-123", "JBSWY3DPEHPK3PXP", false));
         Assert.True(save.IsSuccess, save.Message);
-        _vaultAccess.SetUnlocked(true);
-
         var session = new SyntheticBrowserSession();
         var stages = new ConcurrentQueue<string>();
         await using var orchestrator = CreateOrchestrator(session);
@@ -115,6 +108,153 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TotpProgressAdvancesToPostLoginObservationAndEmitsTerminalEvent()
+    {
+        var accountId = await CreateAccountAsync("synthetic-progress@example.test");
+        var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
+        var save = await credentialPort.SaveAsync(
+            accountId,
+            new ChatGptCredentialInput("synthetic-progress@example.test", "SyntheticProgressPassword-123", "JBSWY3DPEHPK3PXP", false));
+        Assert.True(save.IsSuccess, save.Message);
+
+        var progress = new List<BrowserAuthProgress>();
+        await using var orchestrator = CreateOrchestrator(new SyntheticBrowserSession());
+        var started = await orchestrator.StartAsync(accountId);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId!.Value, BrowserAuthAction.FillEmail, true, new InlineProgress(progress));
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, true, new InlineProgress(progress));
+        var result = await orchestrator.ConfirmAndFillAsync(
+            started.AttemptId.Value,
+            BrowserAuthAction.FillTotp,
+            true,
+            new InlineProgress(progress));
+
+        Assert.Equal(BrowserAuthState.BrowserSessionObserved, result.State);
+        Assert.Contains(progress, item => item.Stage == "SubmittingTotp");
+        Assert.Contains(progress, item => item.Stage == "ObservingPostLogin");
+        Assert.Contains(progress, item => item.State == BrowserAuthState.BrowserSessionObserved && item.IsTerminal);
+        Assert.DoesNotContain(progress, item => item.State == BrowserAuthState.TimedOut);
+    }
+
+    [Fact]
+    public async Task StalledPostLoginObservationReturnsBoundedTimeoutWithTerminalProgress()
+    {
+        var accountId = await CreateAccountAsync("synthetic-stalled@example.test");
+        var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
+        var save = await credentialPort.SaveAsync(
+            accountId,
+            new ChatGptCredentialInput("synthetic-stalled@example.test", "SyntheticStalledPassword-123", "JBSWY3DPEHPK3PXP", false));
+        Assert.True(save.IsSuccess, save.Message);
+
+        var progress = new List<BrowserAuthProgress>();
+        await using var orchestrator = CreateOrchestrator(
+            new StalledPostLoginSession(),
+            postLoginObservationBudget: TimeSpan.FromMilliseconds(180),
+            postLoginOperationBudget: TimeSpan.FromMilliseconds(25));
+        var started = await orchestrator.StartAsync(accountId);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId!.Value, BrowserAuthAction.FillEmail, true);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, true);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await orchestrator.ConfirmAndFillAsync(
+            started.AttemptId.Value,
+            BrowserAuthAction.FillTotp,
+            true,
+            new InlineProgress(progress));
+        stopwatch.Stop();
+
+        Assert.Equal(BrowserAuthState.TimedOut, result.State);
+        Assert.Equal("POST_LOGIN_OBSERVATION_TIMEOUT", result.Status);
+        Assert.InRange(stopwatch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(2));
+        Assert.Contains(progress, item => item.State == BrowserAuthState.ObservingPostLogin);
+        Assert.Contains(progress, item => item.State == BrowserAuthState.TimedOut && item.IsTerminal);
+    }
+
+    [Fact]
+    public async Task CleanReloginUsesFreshAccountBoundCandidateAndPreservesOriginalBinding()
+    {
+        var accountId = await CreateAccountAsync("synthetic-clean-relogin@example.test");
+        var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
+        var save = await credentialPort.SaveAsync(
+            accountId,
+            new ChatGptCredentialInput(
+                "synthetic-clean-relogin@example.test",
+                "SyntheticCleanReloginPassword-123",
+                "JBSWY3DPEHPK3PXP",
+                false));
+        Assert.True(save.IsSuccess, save.Message);
+
+        var originalBinding = new BrowserProfileBindingVm(
+            Guid.NewGuid(),
+            accountId,
+            "openai-chatgpt",
+            "Chrome",
+            "original-profile",
+            "Ready",
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            DateTimeOffset.UtcNow.AddMinutes(-1));
+        var profileManager = new AuthoritativeProfileManager(originalBinding);
+        var session = new SyntheticBrowserSession();
+        var sessionFactory = new CapturingSessionFactory(session);
+        var registration = new TrackingSessionRegistration();
+        var ephemeralFactory = new CapturingEphemeralProfileFactory();
+        await using var orchestrator = CreateOrchestrator(
+            session,
+            factory: sessionFactory,
+            profileManager: profileManager,
+            ephemeralProfileFactory: ephemeralFactory,
+            sessionRegistration: registration);
+        var relogin = new CleanBrowserReloginService(
+            new BrowserAuthCredentialReader(_database.ContextFactory, _vault, _vaultAccess),
+            orchestrator);
+
+        var result = await relogin.ExecuteAsync(accountId);
+
+        Assert.Equal(BrowserAuthState.BrowserSessionObserved, result.State);
+        Assert.NotNull(result.CandidateProfile);
+        Assert.Equal(accountId, result.CandidateProfile!.AccountId);
+        Assert.Equal(accountId, result.CandidateProfile.Binding.AccountId);
+        Assert.NotEqual(originalBinding.BindingId, result.CandidateProfile.BindingId);
+        Assert.Equal(result.CandidateProfile, sessionFactory.LastProfile);
+        Assert.Equal(accountId, registration.LastRegisteredAccountId);
+        Assert.True(registration.RegisteredAttemptIds.Contains(result.AttemptId!.Value));
+        Assert.False(registration.UnregisteredAttemptIds.Contains(result.AttemptId.Value));
+        Assert.Equal(originalBinding.BindingId, (await profileManager.GetBindingAsync(accountId))!.BindingId);
+        Assert.NotEqual(originalBinding.OpaqueProfileIdentifier, ephemeralFactory.LastProfile!.OpaqueProfileIdentifier);
+    }
+
+    [Fact]
+    public async Task CleanReloginFailureReleasesCandidateSessionRegistration()
+    {
+        var accountId = await CreateAccountAsync("synthetic-clean-relogin-failure@example.test");
+        var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
+        var save = await credentialPort.SaveAsync(
+            accountId,
+            new ChatGptCredentialInput(
+                "synthetic-clean-relogin-failure@example.test",
+                "SyntheticCleanReloginFailurePassword-123",
+                "JBSWY3DPEHPK3PXP",
+                false));
+        Assert.True(save.IsSuccess, save.Message);
+
+        var session = new SyntheticBrowserSession { State = BrowserPageState.Captcha };
+        var registration = new TrackingSessionRegistration();
+        await using var orchestrator = CreateOrchestrator(
+            session,
+            ephemeralProfileFactory: new CapturingEphemeralProfileFactory(),
+            sessionRegistration: registration);
+        var relogin = new CleanBrowserReloginService(
+            new BrowserAuthCredentialReader(_database.ContextFactory, _vault, _vaultAccess),
+            orchestrator);
+
+        var result = await relogin.ExecuteAsync(accountId);
+
+        Assert.Equal(BrowserAuthState.HumanActionRequired, result.State);
+        Assert.True(session.IsDisposed);
+        Assert.Contains(result.AttemptId!.Value, registration.RegisteredAttemptIds);
+        Assert.Contains(result.AttemptId.Value, registration.UnregisteredAttemptIds);
+    }
+
+    [Fact]
     public async Task AutoLoginRequiresCredentialRotationAttestationBeforeOpeningBrowser()
     {
         var accountId = await CreateAccountAsync("synthetic-attestation@example.test");
@@ -130,6 +270,39 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ConcurrentAutoLoginForOneAccountCreatesOnlyOneAttempt()
+    {
+        var accountId = await CreateAccountAsync("synthetic-duplicate-attempt@example.test");
+        var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
+        var save = await credentialPort.SaveAsync(
+            accountId,
+            new ChatGptCredentialInput(
+                "synthetic-duplicate-attempt@example.test",
+                "SyntheticDuplicatePassword-123",
+                "JBSWY3DPEHPK3PXP",
+                false));
+        Assert.True(save.IsSuccess, save.Message);
+
+        var session = new SyntheticBrowserSession();
+        var factory = new BlockingSessionFactory(session);
+        await using var orchestrator = CreateOrchestrator(session, factory);
+
+        var first = orchestrator.AutoLoginAsync(accountId, credentialRotationAttested: true);
+        await factory.Opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var duplicate = await orchestrator.AutoLoginAsync(accountId, credentialRotationAttested: true);
+
+        Assert.Equal(BrowserAuthState.Failed, duplicate.State);
+        Assert.Equal("AUTO_LOGIN_IN_PROGRESS", duplicate.Status);
+        Assert.Null(duplicate.AttemptId);
+
+        factory.Release.TrySetResult();
+        var completed = await first;
+        Assert.Equal(BrowserAuthState.BrowserSessionObserved, completed.State);
+        Assert.NotNull(completed.AttemptId);
+    }
+
+    [Fact]
     public async Task AutoLoginExposesBoundedRedactedStageTimingAndLeavesUnexecutedStagesUnset()
     {
         var accountId = await CreateAccountAsync("synthetic-timing@example.test");
@@ -138,8 +311,6 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
             accountId,
             new ChatGptCredentialInput("synthetic-timing@example.test", "SyntheticTimingPassword-123", "JBSWY3DPEHPK3PXP", false));
         Assert.True(save.IsSuccess, save.Message);
-        _vaultAccess.SetUnlocked(true);
-
         var session = new SyntheticBrowserSession();
         await using var orchestrator = CreateOrchestrator(session);
 
@@ -194,22 +365,20 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AutoLoginPreflightRequiresUnlockedVaultAndCredentialReference()
+    public async Task AutoLoginPreflightRequiresCredentialReferenceAndAutomaticAccess()
     {
         var accountId = await CreateAccountAsync("synthetic-preflight@example.test");
         await using var orchestrator = CreateOrchestrator(new SyntheticBrowserSession());
 
-        var locked = await orchestrator.GetAutoLoginPreflightAsync(accountId);
-        Assert.False(locked.IsReady);
-        Assert.Equal("VAULT_LOCKED", locked.Status);
+        var missing = await orchestrator.GetAutoLoginPreflightAsync(accountId);
+        Assert.False(missing.IsReady);
+        Assert.Equal("CREDENTIAL_NOT_FOUND", missing.Status);
 
         var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
         var save = await credentialPort.SaveAsync(
             accountId,
             new ChatGptCredentialInput("synthetic-preflight@example.test", "SyntheticPreflightPassword-123", null, false));
         Assert.True(save.IsSuccess, save.Message);
-        _vaultAccess.SetUnlocked(true);
-
         var ready = await orchestrator.GetAutoLoginPreflightAsync(accountId);
         Assert.True(ready.IsReady, ready.Message);
         Assert.True(ready.CredentialReferenceReady);
@@ -217,7 +386,7 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AutoLoginStopsAtVaultGateBeforePasswordFill()
+    public async Task AutoLoginReadsCompatibleCredentialWithoutInteractiveUnlock()
     {
         var accountId = await CreateAccountAsync("synthetic-vault-gate@example.test");
         var credentialPort = new SqliteAccountCredentialUiPort(_database.ContextFactory, _vault);
@@ -231,10 +400,10 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
 
         var result = await orchestrator.AutoLoginAsync(accountId, credentialRotationAttested: true);
 
-        Assert.Equal(BrowserAuthState.PasswordRequired, result.State);
-        Assert.Equal("VAULT_LOCKED", result.Status);
+        Assert.Equal(BrowserAuthState.MfaRequired, result.State);
+        Assert.Equal("MFA_SEED_MISSING", result.Status);
         Assert.Equal("synthetic-vault-gate@example.test", session.FilledValues[BrowserAuthField.Email]);
-        Assert.False(session.FilledValues.ContainsKey(BrowserAuthField.Password));
+        Assert.Equal("SyntheticVaultGatePassword-123", session.FilledValues[BrowserAuthField.Password]);
     }
 
     [Fact]
@@ -337,8 +506,6 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
             owner,
             new ChatGptCredentialInput("owner-auth@example.test", "OwnerPassword-123", null, false));
         Assert.True(save.IsSuccess, save.Message);
-        _vaultAccess.SetUnlocked(true);
-
         var session = new SyntheticBrowserSession { State = BrowserPageState.PasswordRequired };
         await using var orchestrator = CreateOrchestrator(session);
         var started = await orchestrator.StartAsync(other);
@@ -349,16 +516,24 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
     }
 
     private BrowserAuthOrchestrator CreateOrchestrator(
-        SyntheticBrowserSession session,
+        IBrowserAuthenticationSession session,
         IBrowserAuthenticationSessionFactory? factory = null,
-        IBrowserProfileManager? profileManager = null)
+        IBrowserProfileManager? profileManager = null,
+        TimeSpan? postLoginObservationBudget = null,
+        TimeSpan? postLoginOperationBudget = null,
+        IEphemeralBrowserProfileFactory? ephemeralProfileFactory = null,
+        IAccountBrowserSessionRegistration? sessionRegistration = null)
     {
         return new BrowserAuthOrchestrator(
             profileManager ?? new SyntheticProfileManager(),
             factory ?? new SyntheticSessionFactory(session),
             new StableBrowserPageStateDetector(),
             new BrowserAuthCredentialReader(_database.ContextFactory, _vault, _vaultAccess),
-            new Rfc6238TotpGenerator());
+            new Rfc6238TotpGenerator(),
+            ephemeralProfileFactory: ephemeralProfileFactory,
+            sessionRegistration: sessionRegistration,
+            postLoginObservationBudget: postLoginObservationBudget,
+            postLoginOperationBudget: postLoginOperationBudget);
     }
 
     private async Task<Guid> CreateAccountAsync(string email)
@@ -416,6 +591,183 @@ public sealed class AuthBrowser01Tests : IAsyncLifetime
     {
         public Task<IBrowserAuthenticationSession> OpenAsync(BrowserProfileSessionContext profile, Uri officialUri, CancellationToken cancellationToken = default)
             => Task.FromException<IBrowserAuthenticationSession>(new BrowserAuthSessionException(code, "Synthetic profile lock."));
+    }
+
+    private sealed class BlockingSessionFactory(IBrowserAuthenticationSession session) : IBrowserAuthenticationSessionFactory
+    {
+        public TaskCompletionSource Opened { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<IBrowserAuthenticationSession> OpenAsync(
+            BrowserProfileSessionContext profile,
+            Uri officialUri,
+            CancellationToken cancellationToken = default)
+        {
+            Opened.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return session;
+        }
+    }
+
+    private sealed class InlineProgress(List<BrowserAuthProgress> items) : IProgress<BrowserAuthProgress>
+    {
+        public void Report(BrowserAuthProgress value) => items.Add(value);
+    }
+
+    private sealed class AuthoritativeProfileManager(BrowserProfileBindingVm originalBinding) : IBrowserProfileManager
+    {
+        public Task<BrowserProfileBindingVm?> GetBindingAsync(
+            Guid accountId,
+            string providerId = "openai-chatgpt",
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<BrowserProfileBindingVm?>(originalBinding);
+
+        public Task<BrowserProfilePreparationResult> PrepareAsync(
+            Guid accountId,
+            string providerId = "openai-chatgpt",
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new BrowserProfilePreparationResult(
+                true,
+                "BrowserProfileReady",
+                "Synthetic authoritative profile ready.",
+                new BrowserProfileSessionContext(
+                    originalBinding.BindingId,
+                    accountId,
+                    providerId,
+                    originalBinding.OpaqueProfileIdentifier,
+                    Path.Combine(Path.GetTempPath(), "flash-router-original-profile"),
+                    "synthetic-chrome",
+                    originalBinding)));
+
+        public Task RecordLaunchResultAsync(
+            Guid bindingId,
+            bool succeeded,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    private sealed class CapturingEphemeralProfileFactory : IEphemeralBrowserProfileFactory
+    {
+        public BrowserProfileSessionContext? LastProfile { get; private set; }
+
+        public Task<EphemeralBrowserProfilePreparationResult> PrepareAsync(
+            BrowserSessionMode sessionMode,
+            CancellationToken cancellationToken = default)
+        {
+            var bindingId = Guid.NewGuid();
+            var profileId = "candidate-" + Guid.NewGuid().ToString("N");
+            LastProfile = new BrowserProfileSessionContext(
+                bindingId,
+                Guid.Empty,
+                "openai-chatgpt",
+                profileId,
+                Path.Combine(Path.GetTempPath(), "flash-router-candidate-" + Guid.NewGuid().ToString("N")),
+                "synthetic-chrome",
+                new BrowserProfileBindingVm(
+                    bindingId,
+                    Guid.Empty,
+                    "openai-chatgpt",
+                    "Chrome",
+                    profileId,
+                    "Available",
+                    DateTimeOffset.UtcNow,
+                    null));
+            return Task.FromResult(new EphemeralBrowserProfilePreparationResult(
+                true,
+                "EphemeralBrowserProfileReady",
+                "Synthetic clean profile ready.",
+                LastProfile));
+        }
+    }
+
+    private sealed class CapturingSessionFactory(IBrowserAuthenticationSession session) : IBrowserAuthenticationSessionFactory
+    {
+        public BrowserProfileSessionContext? LastProfile { get; private set; }
+
+        public Task<IBrowserAuthenticationSession> OpenAsync(
+            BrowserProfileSessionContext profile,
+            Uri officialUri,
+            CancellationToken cancellationToken = default)
+        {
+            LastProfile = profile;
+            return Task.FromResult(session);
+        }
+    }
+
+    private sealed class TrackingSessionRegistration : IAccountBrowserSessionRegistration
+    {
+        public Guid LastRegisteredAccountId { get; private set; }
+        public List<Guid> RegisteredAttemptIds { get; } = [];
+        public List<Guid> UnregisteredAttemptIds { get; } = [];
+
+        public Task RegisterManagedSessionAsync(
+            Guid accountId,
+            Guid attemptId,
+            BrowserProfileSessionContext profile,
+            IBrowserAuthenticationSession session,
+            CancellationToken cancellationToken = default)
+        {
+            LastRegisteredAccountId = accountId;
+            RegisteredAttemptIds.Add(attemptId);
+            return Task.CompletedTask;
+        }
+
+        public Task UnregisterManagedSessionAsync(
+            Guid accountId,
+            Guid attemptId,
+            CancellationToken cancellationToken = default)
+        {
+            UnregisteredAttemptIds.Add(attemptId);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class StalledPostLoginSession : IBrowserAuthenticationSession
+    {
+        private BrowserPageState _state = BrowserPageState.EmailRequired;
+
+        public Uri CurrentUri => BrowserOriginPolicy.ChatGptUri;
+        public bool IsDisposed { get; private set; }
+
+        public Task NavigateAsync(Uri uri, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task ActivateLoginEntryAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task FillAsync(BrowserAuthField field, string value, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task ActivateEmailContinueAsync(CancellationToken cancellationToken = default)
+        {
+            _state = BrowserPageState.PasswordRequired;
+            return Task.CompletedTask;
+        }
+
+        public Task ActivatePasswordContinueAsync(CancellationToken cancellationToken = default)
+        {
+            _state = BrowserPageState.MfaRequired;
+            return Task.CompletedTask;
+        }
+
+        public Task ActivateTotpContinueAsync(CancellationToken cancellationToken = default)
+        {
+            _state = BrowserPageState.Unknown;
+            return Task.CompletedTask;
+        }
+
+        public async Task<BrowserPageSnapshot> ReadPageAsync(CancellationToken cancellationToken = default)
+        {
+            if (_state == BrowserPageState.Unknown)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return new BrowserPageSnapshot(CurrentUri, _state);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            IsDisposed = true;
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class SyntheticBrowserSession : IBrowserAuthenticationSession

@@ -92,10 +92,10 @@ public sealed class Console04UiRebuildTests
         Assert.Contains("ToggleThemeAsync", consoleRazor, StringComparison.Ordinal);
         Assert.Contains("theme-toggle-btn", consoleRazor, StringComparison.Ordinal);
 
-        // One-shot input line and session modes
+        // One-shot input line
         Assert.Contains("EMAIL|PASS|2FA", consoleRazor, StringComparison.Ordinal);
-        Assert.Contains("Temporary", consoleRazor, StringComparison.Ordinal);
-        Assert.Contains("KeepBrowserSession", consoleRazor, StringComparison.Ordinal);
+        Assert.DoesNotContain("Temporary", consoleRazor, StringComparison.Ordinal);
+        Assert.DoesNotContain("KeepBrowserSession", consoleRazor, StringComparison.Ordinal);
 
         // No legacy links
         Assert.DoesNotContain("/legacy/accounts", consoleRazor, StringComparison.Ordinal);

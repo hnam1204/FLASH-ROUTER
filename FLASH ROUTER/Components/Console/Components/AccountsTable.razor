@@ -15,7 +15,7 @@
                 <th class="col-platform">Nền tảng</th>
                 <th class="col-account">Email / Tài khoản</th>
                 <th class="col-status">Trạng thái</th>
-                <th class="col-session">Phiên</th>
+                <th class="col-session">Trạng thái phiên</th>
                 <th class="col-mfa">2FA</th>
                 <th class="col-updated" @onclick="ToggleSort">
                     <div class="sortable-header">
@@ -52,6 +52,7 @@
                     var isChecked = CheckedAccountIds.Contains(account.AccountId);
                     <tr class="table-row @(isSelected ? "is-selected" : "")"
                         @onclick="() => HandleSelectAccount(account.AccountId)"
+                        @onkeydown="(e) => HandleRowKeyDown(account.AccountId, e)"
                         tabindex="0"
                         role="row"
                         aria-selected="@(isSelected ? "true" : "false")">
@@ -82,28 +83,28 @@
 
                         <!-- 4. Status Badge -->
                         <td class="col-status">
-                            <div class="status-badge-pill @GetStatusClass(account.Status)">
-                                @if (IsActive(account.Status))
+                            <div class="status-badge-pill @GetStatusClass(account)">
+                                @if (IsActive(account))
                                 {
                                     <svg class="status-badge-icon" width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                                         <polygon points="5 3 19 12 5 21 5 3"></polygon>
                                     </svg>
-                                    <span>Hoạt động</span>
+                                    <span>@GetStatusLabel(account)</span>
                                 }
                                 else if (IsUnverified(account.Status))
                                 {
                                     <span class="status-dot"></span>
-                                    <span>Chờ xác minh</span>
+                                    <span>@GetStatusLabel(account)</span>
                                 }
                                 else if (IsExpired(account.Status))
                                 {
                                     <span class="status-dot"></span>
-                                    <span>Hết phiên</span>
+                                    <span>@GetStatusLabel(account)</span>
                                 }
                                 else
                                 {
                                     <span class="status-dot"></span>
-                                    <span>Lỗi</span>
+                                    <span>@GetStatusLabel(account)</span>
                                 }
                             </div>
                         </td>
@@ -119,11 +120,11 @@
                         <td class="col-mfa">
                             @if (Has2Fa(account))
                             {
-                                <span class="mfa-badge mfa-enabled">Bật</span>
+                                <span class="mfa-badge mfa-enabled">Đã ghi nhận</span>
                             }
                             else
                             {
-                                <span class="mfa-badge mfa-disabled">Tắt</span>
+                                <span class="mfa-badge mfa-unknown">Chưa xác minh</span>
                             }
                         </td>
 
@@ -135,7 +136,7 @@
                         <!-- 8. Actions -->
                         <td class="col-actions" @onclick:stopPropagation="true">
                             <div class="action-buttons-group">
-                                @if (IsActive(account.Status))
+                                @if (IsActive(account))
                                 {
                                     <button type="button"
                                             class="table-btn btn-primary"
@@ -173,8 +174,8 @@
                                     @if (_openRowMenuId == account.AccountId)
                                     {
                                         <div class="row-dropdown-menu">
-                                            <button type="button" class="dropdown-item" @onclick="() => CopyAccountEmail(account.Email)">
-                                                Sao chép email
+                                            <button type="button" class="dropdown-item" @onclick="() => CopyAccount(account.AccountId)">
+                                                Sao chép tài khoản
                                             </button>
                                             <button type="button" class="dropdown-item" @onclick="() => OnOpenAccount.InvokeAsync(account)">
                                                 Khởi chạy Chromium
@@ -248,7 +249,7 @@
     [Parameter] public EventCallback<AccountListItemVm> OnLoginAgain { get; set; }
     [Parameter] public EventCallback<AccountListItemVm> OnEditAccount { get; set; }
     [Parameter] public EventCallback<AccountListItemVm> OnDeleteAccount { get; set; }
-    [Parameter] public EventCallback<string> OnCopyEmail { get; set; }
+    [Parameter] public EventCallback<Guid> OnCopyAccount { get; set; }
     [Parameter] public EventCallback OnToggleSort { get; set; }
 
     [Parameter] public int CurrentPage { get; set; } = 1;
@@ -269,6 +270,14 @@
     {
         _openRowMenuId = null;
         await OnAccountSelected.InvokeAsync(accountId);
+    }
+
+    private async Task HandleRowKeyDown(Guid accountId, KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+        {
+            await HandleSelectAccount(accountId);
+        }
     }
 
     private async Task ToggleCheck(Guid id, ChangeEventArgs e)
@@ -309,10 +318,10 @@
         _openRowMenuId = _openRowMenuId == id ? null : id;
     }
 
-    private async Task CopyAccountEmail(string email)
+    private async Task CopyAccount(Guid accountId)
     {
         _openRowMenuId = null;
-        await OnCopyEmail.InvokeAsync(email);
+        await OnCopyAccount.InvokeAsync(accountId);
     }
 
     private async Task TriggerDelete(AccountListItemVm account)
@@ -321,15 +330,16 @@
         await OnDeleteAccount.InvokeAsync(account);
     }
 
-    private static bool IsActive(string status) => status.Equals("Connected", StringComparison.OrdinalIgnoreCase) || status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+    private static bool IsActive(AccountListItemVm account)
+        => account.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase);
     private static bool IsUnverified(string status) => status.Equals("Unverified", StringComparison.OrdinalIgnoreCase);
     private static bool IsExpired(string status) => status.Equals("ReauthNeeded", StringComparison.OrdinalIgnoreCase) || status.Equals("Expired", StringComparison.OrdinalIgnoreCase);
 
-    private static string GetStatusClass(string status)
+    private static string GetStatusClass(AccountListItemVm account)
     {
-        if (IsActive(status)) return "status-active";
-        if (IsUnverified(status)) return "status-unverified";
-        if (IsExpired(status)) return "status-expired";
+        if (IsActive(account)) return "status-active";
+        if (IsUnverified(account.Status)) return "status-unverified";
+        if (IsExpired(account.Status)) return "status-expired";
         return "status-failed";
     }
 
@@ -345,48 +355,43 @@
 
     private static string FormatPlan(string plan, string provider)
     {
-        if (!string.IsNullOrWhiteSpace(plan) && !plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!plan.Contains(FormatProviderName(provider), StringComparison.OrdinalIgnoreCase))
-            {
-                return $"{FormatProviderName(provider)} {plan}";
-            }
-            return plan;
-        }
-
-        var name = FormatProviderName(provider);
-        return name switch
-        {
-            "ChatGPT" => "ChatGPT Plus",
-            "Claude" => "Claude Pro",
-            "Gemini" => "Gemini Advanced",
-            "Perplexity" => "Perplexity Pro",
-            "HUFLIT" => "HUFLIT Portal",
-            _ => "Standard"
-        };
+        return string.IsNullOrWhiteSpace(plan) || plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase)
+            ? "Chưa xác minh"
+            : plan;
     }
 
     private static string GetSessionText(AccountListItemVm account)
     {
-        if (IsActive(account.Status))
+        if (account.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase))
         {
-            var days = (Math.Abs(account.AccountId.GetHashCode()) % 28) + 1;
-            return $"Còn {days} ngày";
+            return "Đăng nhập thành công";
         }
-        if (IsUnverified(account.Status))
+
+        if (account.AuthenticationState.Equals("LoginInProgress", StringComparison.OrdinalIgnoreCase)
+            || account.AuthenticationState.Equals("MfaRequired", StringComparison.OrdinalIgnoreCase))
         {
-            return "Chờ 3 ngày";
+            return "Đang xác minh phiên";
         }
+
         if (IsExpired(account.Status))
         {
-            return "Hết hạn";
+            return "Cần xác thực lại";
         }
-        return "-";
+        if (account.Status.Equals("ConnectionError", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Không khả dụng";
+        }
+
+        return "Chưa xác minh";
     }
 
     private static bool Has2Fa(AccountListItemVm account)
-    {
-        if (account.Tags.Any(t => t.Contains("2fa", StringComparison.OrdinalIgnoreCase))) return true;
-        return (Math.Abs(account.AccountId.GetHashCode()) % 3) != 0;
-    }
+        => account.Tags.Any(t => t.Contains("2fa", StringComparison.OrdinalIgnoreCase));
+
+    private static string GetStatusLabel(AccountListItemVm account)
+        => account.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase)
+            ? "Đã đăng nhập"
+            : account.AuthenticationState.Equals("LoginInProgress", StringComparison.OrdinalIgnoreCase)
+                ? "Đang đăng nhập"
+                : string.IsNullOrWhiteSpace(account.StatusLabel) ? "Chưa xác minh" : account.StatusLabel;
 }

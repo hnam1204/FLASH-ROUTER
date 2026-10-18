@@ -192,6 +192,19 @@ public sealed class ChatGptPasswordStepAutomationTests : IAsyncLifetime
             GuestLoginEntryCount: 0,
             IsPageReady: true);
         Assert.Equal(BrowserPageState.MfaRequired, detector.Detect(mfaSnapshot));
+
+        // An invalid submitted code can leave only a diagnostic message and no
+        // visible TOTP input. The explicit page state must still be preserved.
+        var invalidMfaSnapshot = new BrowserPageSnapshot(
+            new Uri("https://auth.openai.com/challenge/totp"),
+            BrowserPageState.MfaRequired,
+            HasEmailField: false,
+            HasPasswordField: false,
+            HasTotpField: false,
+            HasGuestLoginEntry: false,
+            GuestLoginEntryCount: 0,
+            IsPageReady: true);
+        Assert.Equal(BrowserPageState.MfaRequired, detector.Detect(invalidMfaSnapshot));
     }
 
     // -------------------------------------------------------------

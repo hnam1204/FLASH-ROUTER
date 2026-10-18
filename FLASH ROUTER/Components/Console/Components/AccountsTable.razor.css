@@ -3,7 +3,7 @@
     border: 1px solid var(--app-border);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
-    overflow: hidden;
+    overflow: visible;
     display: flex;
     flex-direction: column;
 }
@@ -325,6 +325,7 @@
     flex-direction: column;
     min-width: 150px;
     z-index: 50;
+    isolation: isolate;
 }
 
 .dropdown-item {
@@ -443,4 +444,148 @@
     color: var(--text-secondary);
     font-size: 12.5px;
     cursor: pointer;
+}
+
+/* V4.3 readability and responsive overrides */
+.accounts-table-container {
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+}
+
+.accounts-table {
+    min-width: 940px;
+    font-size: 13px;
+}
+
+.accounts-table thead th {
+    padding: 14px 15px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.accounts-table tbody td {
+    padding: 15px;
+}
+
+.table-row:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: -2px;
+}
+
+.account-email {
+    max-width: min(30vw, 330px);
+    font-size: 14px;
+}
+
+.account-plan,
+.updated-time,
+.session-text {
+    font-size: 12.5px;
+}
+
+.col-actions {
+    width: 220px;
+}
+
+.action-buttons-group {
+    gap: 6px;
+}
+
+.table-btn {
+    min-width: 42px;
+    padding: 0 11px;
+    white-space: nowrap;
+}
+
+.table-btn.btn-primary {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: #07151c;
+}
+
+.table-btn.btn-primary:hover {
+    background: var(--accent-primary-hover);
+    border-color: var(--accent-primary-hover);
+}
+
+.mfa-unknown {
+    background: var(--app-elevated);
+    color: var(--text-secondary);
+}
+
+@media (max-width: 900px) {
+    .accounts-table {
+        min-width: 0;
+    }
+
+    .accounts-table th.col-session,
+    .accounts-table td.col-session,
+    .accounts-table th.col-mfa,
+    .accounts-table td.col-mfa,
+    .accounts-table th.col-updated,
+    .accounts-table td.col-updated {
+        display: none;
+    }
+
+    .col-platform {
+        width: 112px;
+    }
+
+    .col-actions {
+        width: 168px;
+    }
+
+    .account-email {
+        max-width: 36vw;
+    }
+}
+
+@media (max-width: 620px) {
+    .accounts-table th.col-platform,
+    .accounts-table td.col-platform {
+        display: none;
+    }
+
+    .accounts-table thead th,
+    .accounts-table tbody td {
+        padding: 12px 9px;
+    }
+
+    .col-checkbox {
+        width: 34px;
+        padding-left: 9px !important;
+    }
+
+    .account-email {
+        max-width: 44vw;
+        font-size: 13px;
+    }
+
+    .col-actions {
+        width: 106px;
+        padding-right: 9px !important;
+    }
+
+    .action-buttons-group {
+        gap: 4px;
+    }
+
+    .action-buttons-group .table-btn.btn-outline {
+        display: none;
+    }
+
+    .table-btn.btn-primary {
+        min-width: 0;
+        padding: 0 8px;
+        font-size: 11px;
+    }
+
+    .table-pagination-footer {
+        padding: 12px;
+    }
+
+    .pagination-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
 }

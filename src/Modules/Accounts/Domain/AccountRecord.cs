@@ -80,6 +80,19 @@ public sealed class AccountRecord
     public bool IsArchived { get; private set; }
     public DateTimeOffset? ArchivedAtUtc { get; private set; }
     public long Version { get; private set; }
+    public Guid? LastAuthenticationAttemptId { get; private set; }
+    public DateTimeOffset? LastAuthenticationAttemptAtUtc { get; private set; }
+    public string AuthenticationState { get; private set; } = "NotStarted";
+    public string IdentityVerificationState { get; private set; } = "NotChecked";
+    public DateTimeOffset? LastBrowserSessionObservedAtUtc { get; private set; }
+    public DateTimeOffset? LastAuthenticatedSessionConfirmedAtUtc { get; private set; }
+    public DateTimeOffset? LastIdentityVerifiedAtUtc { get; private set; }
+    public DateTimeOffset? LastObservationAtUtc { get; private set; }
+    public string? LastObservationEvidenceSource { get; private set; }
+    public string? LastObservationErrorCode { get; private set; }
+    public string? LastObservedProviderEmail { get; private set; }
+    public string? LastIdentityEvidenceSource { get; private set; }
+    public string? LastIdentityReasonCode { get; private set; }
     public List<AccountTagRecord> Tags { get; private set; } = [];
 
     public void UpdateProfile(
@@ -115,6 +128,40 @@ public sealed class AccountRecord
     {
         IsFavorite = isFavorite;
         UpdatedAtUtc = updatedAtUtc;
+        Version++;
+    }
+
+    public void RecordAuthenticationState(
+        Guid attemptId,
+        string authenticationState,
+        string identityVerificationState,
+        DateTimeOffset attemptedAtUtc,
+        DateTimeOffset? browserSessionObservedAtUtc,
+        DateTimeOffset? authenticatedSessionConfirmedAtUtc,
+        DateTimeOffset? identityVerifiedAtUtc,
+        DateTimeOffset? observedAtUtc,
+        string? evidenceSource,
+        string? sanitizedFailureCode,
+        string? observedProviderEmail = null,
+        string? identityEvidenceSource = null,
+        string? identityReasonCode = null)
+    {
+        LastAuthenticationAttemptId = attemptId;
+        LastAuthenticationAttemptAtUtc = attemptedAtUtc;
+        AuthenticationState = authenticationState;
+        IdentityVerificationState = identityVerificationState;
+        LastBrowserSessionObservedAtUtc = browserSessionObservedAtUtc ?? LastBrowserSessionObservedAtUtc;
+        LastAuthenticatedSessionConfirmedAtUtc = authenticatedSessionConfirmedAtUtc ?? LastAuthenticatedSessionConfirmedAtUtc;
+        LastIdentityVerifiedAtUtc = identityVerifiedAtUtc ?? LastIdentityVerifiedAtUtc;
+        LastObservationAtUtc = observedAtUtc ?? LastObservationAtUtc;
+        LastObservationEvidenceSource = evidenceSource;
+        LastObservationErrorCode = sanitizedFailureCode;
+        LastObservedProviderEmail = observedProviderEmail ?? LastObservedProviderEmail;
+        LastIdentityEvidenceSource = identityEvidenceSource ?? LastIdentityEvidenceSource;
+        LastIdentityReasonCode = identityReasonCode ?? LastIdentityReasonCode;
+        UpdatedAtUtc = observedAtUtc ?? attemptedAtUtc;
+        TrackingDateUtc = UpdatedAtUtc;
+        TrackingDateTicksUtc = TrackingDateUtc.UtcTicks;
         Version++;
     }
 

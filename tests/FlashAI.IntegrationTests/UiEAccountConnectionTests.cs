@@ -86,7 +86,7 @@ public sealed class SecureAccountCopyTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task BasicCopyExcludesSecretsAndCredentialCopyRequiresUnlockAndConfirmation()
+    public async Task BasicCopyExcludesSecretsAndCredentialCopyRequiresConfirmationButNotVaultUnlock()
     {
         var accountId = await CreateAccountAsync("copy@example.test");
         var password = "copy|password-123";
@@ -108,11 +108,7 @@ public sealed class SecureAccountCopyTests : IAsyncLifetime
         var unconfirmed = await copyPort.CopySavedCredentialsAsync(accountId, confirmed: false);
         Assert.Equal("COPY_CONFIRMATION_REQUIRED", unconfirmed.Status);
 
-        var locked = await copyPort.CopySavedCredentialsAsync(accountId, confirmed: true);
-        Assert.Equal("VAULT_LOCKED", locked.Status);
-        Assert.DoesNotContain(password, locked.Message, StringComparison.Ordinal);
-
-        access.SetUnlocked(true);
+        Assert.False(access.IsUnlocked);
         var copied = await copyPort.CopySavedCredentialsAsync(accountId, confirmed: true);
         Assert.True(copied.IsSuccess, copied.Message);
         Assert.True(copied.ContainsSecret);

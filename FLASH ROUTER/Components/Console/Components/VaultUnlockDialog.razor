@@ -1,0 +1,73 @@
+@namespace FLASH_ROUTER.Components.Console.Components
+@using Microsoft.AspNetCore.Components.Web
+
+@if (IsOpen)
+{
+    <div class="flash-overlay-backdrop" @onclick="HandleClose">
+        <div class="flash-modal-card vault-unlock-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="vault-unlock-title">
+            <div class="flash-modal-header">
+                <h3 id="vault-unlock-title" class="flash-modal-title">Mở khóa Vault</h3>
+                <button type="button" class="flash-modal-close-btn" @onclick="HandleClose" aria-label="Đóng">✕</button>
+            </div>
+            <div class="flash-modal-body">
+                <p class="field-help">Vault dùng Windows Data Protection hiện tại. Mật khẩu chỉ tồn tại trong lần xác minh này và không được ghi vào log.</p>
+                @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                {
+                    <div class="modal-error-banner" role="alert">@ErrorMessage</div>
+                }
+                <div class="modal-form-group">
+                    <label class="form-label" for="vault-passphrase">Mật khẩu mở khóa</label>
+                    <input id="vault-passphrase" type="password" class="modal-input" @bind="_passphrase" autocomplete="current-password" @onkeydown="HandleKeyDown" />
+                </div>
+            </div>
+            <div class="flash-modal-footer">
+                <button type="button" class="flash-btn flash-btn-outline" @onclick="HandleClose">Hủy</button>
+                <button type="button" class="flash-btn flash-btn-primary" @onclick="HandleUnlock" disabled="@_isSubmitting">Mở khóa và tiếp tục</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnUnlock { get; set; }
+
+    private string _passphrase = string.Empty;
+    private bool _isSubmitting;
+
+    private async Task HandleUnlock()
+    {
+        if (_isSubmitting || string.IsNullOrWhiteSpace(_passphrase))
+        {
+            return;
+        }
+
+        _isSubmitting = true;
+        var passphrase = _passphrase;
+        try
+        {
+            await OnUnlock.InvokeAsync(passphrase);
+        }
+        finally
+        {
+            _passphrase = string.Empty;
+            _isSubmitting = false;
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key.Equals("Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleUnlock();
+        }
+    }
+
+    private Task HandleClose()
+    {
+        _passphrase = string.Empty;
+        return OnClose.InvokeAsync();
+    }
+}

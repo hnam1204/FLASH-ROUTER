@@ -205,7 +205,7 @@ public sealed class PlaywrightBrowserAuthenticationSessionFactory : IBrowserAuth
     }
 }
 
-public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticationSession, IBrowserAuthenticationSessionDiagnostics
+public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticationSession, IBrowserAuthenticationSessionDiagnostics, IBrowserIdentityObservationSession
 {
     private static readonly string[] LoginEntryNames = ["Đăng nhập", "Log in", "Sign in"];
     private static readonly string[] EmailContinueNames =
@@ -365,15 +365,7 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
         ThrowIfDisposed();
         try
         {
-            var pages = _context.Pages;
-            if (pages.Count > 0 && !ReferenceEquals(pages[^1], _page))
-            {
-                var latest = pages[^1];
-                if (Uri.TryCreate(latest.Url, UriKind.Absolute, out var latestUri) && _isAllowedOrigin(latestUri))
-                {
-                    _page = latest;
-                }
-            }
+            SelectLatestInspectablePage();
 
             var currentUri = CurrentUri;
             var bodyText = await _page.Locator("body").InnerTextAsync(new LocatorInnerTextOptions { Timeout = 3_000 }).WaitAsync(cancellationToken);
@@ -411,6 +403,80 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
         catch (PlaywrightException)
         {
             throw new BrowserAuthSessionException("BROWSER_CLOSED", "Chrome đã đóng hoặc phiên trình duyệt không còn khả dụng.");
+        }
+    }
+
+    public async Task<BrowserIdentityEvidence> ReadIdentityEvidenceAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        try
+        {
+            SelectLatestInspectablePage();
+            if (!_isAllowedOrigin(CurrentUri))
+            {
+                throw new BrowserAuthSessionException(
+                    "IDENTITY_ORIGIN_UNTRUSTED",
+                    "Không thể đọc bằng chứng danh tính vì browser đã rời origin được cho phép.");
+            }
+
+            var bodyText = await _page.Locator("body")
+                .InnerTextAsync(new LocatorInnerTextOptions { Timeout = 3_000 })
+                .WaitAsync(cancellationToken);
+            var authenticatedShellDetected = Matches(
+                bodyText,
+                "log out|sign out|account settings|manage account|my account|đăng xuất|cài đặt tài khoản|quản lý tài khoản|tài khoản của tôi");
+
+            var accountMenu = _page.Locator(
+                "button[aria-label*='account' i], button[aria-label*='profile' i], button[aria-label*='user' i], "
+                + "button[aria-haspopup='menu'], [data-testid*='account' i], [data-testid*='profile' i], "
+                + "[data-testid*='user' i], a[href*='/settings' i]");
+            string? observedEmail = null;
+            var accountMenuDetected = false;
+            var count = await accountMenu.CountAsync().WaitAsync(cancellationToken);
+            for (var index = 0; index < count; index++)
+            {
+                var candidate = accountMenu.Nth(index);
+                if (!await candidate.IsVisibleAsync().WaitAsync(cancellationToken))
+                {
+                    continue;
+                }
+
+                accountMenuDetected = true;
+                var text = await candidate.InnerTextAsync().WaitAsync(cancellationToken);
+                observedEmail ??= ExtractEmail(text);
+                observedEmail ??= ExtractEmail(await candidate.GetAttributeAsync("aria-label").WaitAsync(cancellationToken));
+                observedEmail ??= ExtractEmail(await candidate.GetAttributeAsync("title").WaitAsync(cancellationToken));
+            }
+
+            if (accountMenuDetected)
+            {
+                observedEmail ??= ExtractEmail(bodyText);
+            }
+
+            return new BrowserIdentityEvidence(
+                authenticatedShellDetected,
+                accountMenuDetected,
+                observedEmail,
+                null,
+                accountMenuDetected ? "Visible provider account-menu UI" : "Visible provider shell without account-menu evidence",
+                accountMenuDetected
+                    ? observedEmail is null ? "IDENTITY_EMAIL_UNAVAILABLE" : null
+                    : "IDENTITY_ACCOUNT_MENU_UNAVAILABLE",
+                DateTimeOffset.UtcNow);
+        }
+        catch (BrowserAuthSessionException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (PlaywrightException)
+        {
+            throw new BrowserAuthSessionException(
+                "IDENTITY_OBSERVATION_READ_FAILED",
+                "Không thể đọc bằng chứng danh tính an toàn từ giao diện provider.");
         }
     }
 
@@ -675,6 +741,42 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
 
     private async Task<bool> HasVisibleAsync(string[] selectors, CancellationToken cancellationToken)
         => await FindFirstVisibleAsync(selectors, cancellationToken) is not null;
+
+    private void SelectLatestInspectablePage()
+    {
+        var pages = _context.Pages;
+        for (var index = pages.Count - 1; index >= 0; index--)
+        {
+            var candidate = pages[index];
+            try
+            {
+                if (Uri.TryCreate(candidate.Url, UriKind.Absolute, out var candidateUri)
+                    && _isAllowedOrigin(candidateUri))
+                {
+                    _page = candidate;
+                    return;
+                }
+            }
+            catch (PlaywrightException)
+            {
+                // A closed or transitioning tab is skipped; the next active tab may still be inspectable.
+            }
+        }
+    }
+
+    private static string? ExtractEmail(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var match = Regex.Match(
+            value,
+            @"(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}(?![A-Za-z0-9._%+\-])",
+            RegexOptions.CultureInvariant);
+        return match.Success ? match.Value : null;
+    }
 
     private async Task<ILocator> FindCredentialScopeAsync(
         ILocator field,
@@ -1027,6 +1129,11 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
         if (Matches(bodyText, "wrong password|incorrect password|invalid password|your password was incorrect|password is incorrect|mật khẩu không chính xác|mật khẩu không đúng|sai mật khẩu|email or password is incorrect|tài khoản hoặc mật khẩu không đúng"))
         {
             return BrowserPageState.InvalidCredentials;
+        }
+
+        if (Matches(bodyText, "invalid authenticator code|invalid verification code|incorrect verification code|verification code is incorrect|invalid one-time code|mã xác thực không đúng|mã xác minh không đúng"))
+        {
+            return BrowserPageState.MfaRequired;
         }
 
         // Guest landing pages can expose a chat composer and "New chat" text.

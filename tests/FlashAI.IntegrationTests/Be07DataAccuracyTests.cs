@@ -2,6 +2,7 @@ using FlashAI.Foundation.Contracts;
 using FlashAI.Foundation.Persistence;
 using FlashAI.Modules.Accounts.Domain;
 using FlashAI.Modules.Accounts.Persistence;
+using FlashAI.Modules.Activity.Persistence;
 using FlashAI.Modules.Connections.Domain;
 using FlashAI.Modules.Connections.Features.ProviderIntegration.Abstractions;
 using FlashAI.Modules.Connections.Persistence;
@@ -44,6 +45,7 @@ public sealed class Be07DataAccuracyTests
             services.AddSingleton<SqliteConnectionFactory>();
             services.AddSingleton<IFlashAiModelContributor, AccountModelContributor>();
             services.AddSingleton<IFlashAiModelContributor, ConnectionModelContributor>();
+            services.AddSingleton<IFlashAiModelContributor, ActivityModelContributor>();
             services.AddDbContextFactory<FlashAiDbContext>((serviceProvider, options) =>
             {
                 options.UseSqlite(

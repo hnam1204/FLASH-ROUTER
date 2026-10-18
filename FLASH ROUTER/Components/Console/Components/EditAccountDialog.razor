@@ -1,57 +1,67 @@
 @namespace FLASH_ROUTER.Components.Console.Components
 @using FlashAI.Modules.Accounts.Contracts
+@using FlashAI.Modules.Connections.Contracts
 
 @if (IsOpen && Account != null)
 {
     <div class="flash-overlay-backdrop" @onclick="HandleClose">
         <div class="flash-modal-card edit-account-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="edit-account-title">
             <div class="flash-modal-header">
-                <h3 id="edit-account-title" class="flash-modal-title">Sửa thông tin tài khoản</h3>
+                <h3 id="edit-account-title" class="flash-modal-title">Chỉnh sửa credential</h3>
                 <button type="button" class="flash-modal-close-btn" @onclick="HandleClose" aria-label="Đóng">✕</button>
             </div>
 
             <div class="flash-modal-body">
-                <!-- Email (Read-only) -->
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <div class="modal-error-banner" role="alert">@_errorMessage</div>
+                }
+
                 <div class="modal-form-group">
-                    <label class="form-label" for="edit-email">Email tài khoản</label>
-                    <input id="edit-email" type="email" class="modal-input readonly-input" value="@Account.Email" readonly disabled />
+                    <span class="form-label">Provider</span>
+                    <div class="readonly-field">@FormatProvider(Account.Provider)</div>
                 </div>
 
-                <div class="modal-form-row">
-                    <!-- Display Name -->
-                    <div class="modal-form-group flex-1">
-                        <label class="form-label" for="edit-display-name">Tên hiển thị</label>
-                        <input id="edit-display-name" type="text" class="modal-input" @bind="_displayName" />
+                <div class="modal-form-group">
+                    <label class="form-label" for="edit-email">Email</label>
+                    <input id="edit-email" type="email" class="modal-input" @bind="_email" autocomplete="username" />
+                </div>
+
+                <div class="modal-form-group">
+                    <span class="form-label">Password</span>
+                    <div class="radio-options-row">
+                        <label class="radio-label"><input type="radio" name="password-update" checked="@(_passwordAction == CredentialPasswordUpdate.Keep)" @onchange="() => _passwordAction = CredentialPasswordUpdate.Keep" /> Giữ password hiện tại</label>
+                        <label class="radio-label"><input type="radio" name="password-update" checked="@(_passwordAction == CredentialPasswordUpdate.Replace)" @onchange="() => _passwordAction = CredentialPasswordUpdate.Replace" /> Thay password</label>
                     </div>
+                    @if (_passwordAction == CredentialPasswordUpdate.Replace)
+                    {
+                        <input id="edit-password" type="password" class="modal-input" placeholder="Password mới" @bind="_replacementPassword" autocomplete="new-password" />
+                    }
+                </div>
 
-                    <!-- Plan -->
-                    <div class="modal-form-group flex-1">
-                        <label class="form-label" for="edit-plan">Gói tài khoản</label>
-                        <input id="edit-plan" type="text" class="modal-input" @bind="_plan" />
+                <div class="modal-form-group">
+                    <span class="form-label">2FA</span>
+                    <div class="radio-options-row">
+                        <label class="radio-label"><input type="radio" name="totp-update" checked="@(_totpAction == CredentialTotpUpdate.Keep)" @onchange="() => _totpAction = CredentialTotpUpdate.Keep" /> Giữ 2FA hiện tại</label>
+                        <label class="radio-label"><input type="radio" name="totp-update" checked="@(_totpAction == CredentialTotpUpdate.Replace)" @onchange="() => _totpAction = CredentialTotpUpdate.Replace" /> Thay 2FA</label>
+                        <label class="radio-label"><input type="radio" name="totp-update" checked="@(_totpAction == CredentialTotpUpdate.Remove)" @onchange="() => _totpAction = CredentialTotpUpdate.Remove" /> Xóa 2FA đã lưu</label>
                     </div>
+                    @if (_totpAction == CredentialTotpUpdate.Replace)
+                    {
+                        <input id="edit-totp" type="password" class="modal-input" placeholder="TOTP secret seed mới" @bind="_replacementTotpSeed" autocomplete="off" />
+                    }
+                    <span class="field-help">Không hiển thị secret hiện tại. Xóa khỏi FLASH ROUTER không tắt MFA phía provider.</span>
                 </div>
 
-                <!-- Status -->
                 <div class="modal-form-group">
-                    <label class="form-label" for="edit-status">Trạng thái</label>
-                    <select id="edit-status" class="modal-select" @bind="_status">
-                        <option value="Connected">Đang hoạt động (Connected)</option>
-                        <option value="Unverified">Cần xác minh (Unverified)</option>
-                        <option value="ReauthNeeded">Hết phiên (ReauthNeeded)</option>
-                        <option value="ConnectionError">Đã lỗi (ConnectionError)</option>
-                    </select>
-                </div>
-
-                <!-- Notes -->
-                <div class="modal-form-group">
-                    <label class="form-label" for="edit-notes">Ghi chú</label>
-                    <textarea id="edit-notes" class="modal-textarea" rows="3" @bind="_notes"></textarea>
+                    <label class="form-label" for="edit-notes">Notes</label>
+                    <textarea id="edit-notes" class="modal-textarea" rows="3" maxlength="1000" @bind="_notes"></textarea>
                 </div>
             </div>
 
             <div class="flash-modal-footer">
                 <button type="button" class="flash-btn flash-btn-outline" @onclick="HandleClose">Hủy</button>
-                <button type="button" class="flash-btn flash-btn-primary" @onclick="HandleSave">Cập nhật</button>
+                <button type="button" class="flash-btn flash-btn-primary" @onclick="HandleSave">Lưu thay đổi</button>
             </div>
         </div>
     </div>
@@ -61,47 +71,73 @@
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public AccountDetailVm? Account { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
-    [Parameter] public EventCallback<(Guid Id, AccountEditorVm Model)> OnSave { get; set; }
+    [Parameter] public EventCallback<(Guid Id, AccountEditorVm Model, CredentialUpdateInput? Credential)> OnSave { get; set; }
 
-    private string _displayName = "";
-    private string _plan = "";
-    private string _status = "Connected";
-    private string _notes = "";
+    private string _email = string.Empty;
+    private string _replacementPassword = string.Empty;
+    private string _replacementTotpSeed = string.Empty;
+    private string _notes = string.Empty;
+    private string? _errorMessage;
     private Guid? _lastLoadedId;
+    private CredentialPasswordUpdate _passwordAction = CredentialPasswordUpdate.Keep;
+    private CredentialTotpUpdate _totpAction = CredentialTotpUpdate.Keep;
 
     protected override void OnParametersSet()
     {
         if (Account != null && Account.AccountId != _lastLoadedId)
         {
             _lastLoadedId = Account.AccountId;
-            _displayName = Account.DisplayName;
-            _plan = Account.RecordedPlan;
-            _status = Account.Status;
-            _notes = Account.Notes ?? "";
+            _email = Account.Email;
+            _notes = Account.Notes ?? string.Empty;
+            _replacementPassword = string.Empty;
+            _replacementTotpSeed = string.Empty;
+            _passwordAction = CredentialPasswordUpdate.Keep;
+            _totpAction = CredentialTotpUpdate.Keep;
+            _errorMessage = null;
         }
     }
 
     private async Task HandleSave()
     {
-        if (Account == null) return;
-
-        var model = new AccountEditorVm
+        if (Account == null)
         {
-            Email = Account.Email,
-            DisplayName = string.IsNullOrWhiteSpace(_displayName) ? Account.DisplayName : _displayName.Trim(),
+            return;
+        }
+
+        _errorMessage = null;
+        if (string.IsNullOrWhiteSpace(_email))
+        {
+            _errorMessage = "Email không được để trống.";
+            return;
+        }
+
+        var profile = new AccountEditorVm
+        {
+            AccountId = Account.AccountId,
+            Email = _email.Trim(),
+            DisplayName = Account.DisplayName,
             Provider = Account.Provider,
-            RecordedPlan = string.IsNullOrWhiteSpace(_plan) ? Account.RecordedPlan : _plan.Trim(),
-            Status = _status,
+            RecordedPlan = Account.RecordedPlan,
+            Status = Account.Status,
             Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes.Trim(),
-            Tags = Account.Tags?.ToList() ?? new List<string>()
+            Tags = Account.Tags.ToList(),
+            Version = Account.Version
         };
+        var credentialChanged = !Account.Email.Equals(_email.Trim(), StringComparison.OrdinalIgnoreCase)
+            || _passwordAction == CredentialPasswordUpdate.Replace
+            || _totpAction != CredentialTotpUpdate.Keep;
+        var credential = credentialChanged
+            ? new CredentialUpdateInput(_email.Trim(), _passwordAction, _replacementPassword, _totpAction, _replacementTotpSeed)
+            : null;
 
-        await OnSave.InvokeAsync((Account.AccountId, model));
+        await OnSave.InvokeAsync((Account.AccountId, profile, credential));
         await OnClose.InvokeAsync();
     }
 
-    private async Task HandleClose()
-    {
-        await OnClose.InvokeAsync();
-    }
+    private Task HandleClose() => OnClose.InvokeAsync();
+
+    private static string FormatProvider(string provider)
+        => provider.Contains("chatgpt", StringComparison.OrdinalIgnoreCase) || provider.Contains("openai", StringComparison.OrdinalIgnoreCase)
+            ? "ChatGPT"
+            : provider;
 }

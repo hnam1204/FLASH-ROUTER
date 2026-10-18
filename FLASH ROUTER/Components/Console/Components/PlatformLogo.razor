@@ -1,60 +1,15 @@
 @namespace FLASH_ROUTER.Components.Console.Components
 
-<div class="platform-logo-badge @GetPlatformClass() @CustomClass" style="width: @(Size)px; height: @(Size)px;" title="@GetPlatformTitle()">
-    @if (IsChatGPT)
+<div class="platform-logo-badge @GetPlatformClass() @CustomClass"
+     style="width: @(Size)px; height: @(Size)px;"
+     title="@GetPlatformTitle()">
+    @if (LogoPath is not null)
     {
-        <!-- ChatGPT Spiral SVG -->
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="platform-svg">
-            <path d="M12 2a10 10 0 0 1 10 10 10 10 0 0 1-10 10 10 10 0 0 1-10-10A10 10 0 0 1 12 2z" fill="#10A37F" stroke="none"></path>
-            <path d="M15.5 8.5c-.7-.7-1.8-.9-2.7-.6l-1.3.4c-.4.1-.8 0-1.1-.3l-.8-.8c-.6-.6-1.6-.7-2.3-.2-.7.5-.9 1.5-.5 2.3l.5 1.1c.2.4.1.8-.1 1.1l-.9.9c-.6.6-.7 1.6-.2 2.3.5.7 1.5.9 2.3.5l1.1-.5c.4-.2.8-.1 1.1.1l.9.9c.6.6 1.6.7 2.3.2.7-.5.9-1.5.5-2.3l-.5-1.1c-.2-.4-.1-.8.1-1.1l.9-.9c.7-.6.8-1.6.2-2.3z" fill="white" stroke="none"></path>
-            <circle cx="12" cy="12" r="2" fill="#10A37F"></circle>
-        </svg>
-    }
-    else if (IsClaude)
-    {
-        <!-- Claude Star SVG -->
-        <svg viewBox="0 0 24 24" fill="none" class="platform-svg">
-            <rect width="24" height="24" rx="6" fill="#CC5636"></rect>
-            <path d="M12 4.5l1.8 4.7 4.7 1.8-4.7 1.8-1.8 4.7-1.8-4.7-4.7-1.8 4.7-1.8 1.8-4.7z" fill="white"></path>
-        </svg>
-    }
-    else if (IsGemini)
-    {
-        <!-- Gemini 4-Point Star SVG -->
-        <svg viewBox="0 0 24 24" fill="none" class="platform-svg">
-            <rect width="24" height="24" rx="6" fill="#1A2D54"></rect>
-            <path d="M12 3C12 7.97 7.97 12 3 12C7.97 12 12 16.03 12 21C12 16.03 16.03 12 21 12C16.03 12 12 7.97 12 3Z" fill="url(#gemini-grad)"></path>
-            <defs>
-                <linearGradient id="gemini-grad" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
-                    <stop stop-color="#4E97FF"></stop>
-                    <stop offset="0.5" stop-color="#809CFF"></stop>
-                    <stop offset="1" stop-color="#C580FF"></stop>
-                </linearGradient>
-            </defs>
-        </svg>
-    }
-    else if (IsPerplexity)
-    {
-        <!-- Perplexity Asterisk SVG -->
-        <svg viewBox="0 0 24 24" fill="none" class="platform-svg">
-            <rect width="24" height="24" rx="6" fill="#13171D"></rect>
-            <path d="M12 5v14M5 12h14M7.05 7.05l9.9 9.9M7.05 16.95l9.9-9.9" stroke="#22B8CD" stroke-width="2.5" stroke-linecap="round"></path>
-        </svg>
-    }
-    else if (IsHuflit)
-    {
-        <!-- HUFLIT Badge -->
-        <div class="huflit-badge-inner">
-            <span class="huflit-text">HU</span>
-        </div>
+        <img class="platform-logo-image" src="@LogoPath" alt="@GetPlatformTitle()" />
     }
     else
     {
-        <!-- Generic / AI Platform Fallback -->
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="platform-svg">
-            <rect width="24" height="24" rx="6" fill="var(--app-elevated)"></rect>
-            <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" fill="var(--accent-primary)" stroke="var(--accent-primary)"></path>
-        </svg>
+        <span class="platform-logo-fallback" aria-hidden="true">@GetFallbackText()</span>
     }
 </div>
 
@@ -68,6 +23,14 @@
     private bool IsGemini => Provider.Contains("gemini", StringComparison.OrdinalIgnoreCase) || Provider.Contains("google", StringComparison.OrdinalIgnoreCase);
     private bool IsPerplexity => Provider.Contains("perplexity", StringComparison.OrdinalIgnoreCase);
     private bool IsHuflit => Provider.Contains("huflit", StringComparison.OrdinalIgnoreCase);
+
+    private string? LogoPath => IsChatGPT
+        ? "assets/brands/chatgpt.png"
+        : IsClaude
+            ? "assets/brands/claude.png"
+            : IsGemini
+                ? "assets/brands/gemini.png"
+                : null;
 
     private string GetPlatformClass()
     {
@@ -86,6 +49,14 @@
         if (IsGemini) return "Google Gemini";
         if (IsPerplexity) return "Perplexity AI";
         if (IsHuflit) return "HUFLIT Portal";
-        return Provider;
+        return string.IsNullOrWhiteSpace(Provider) ? "Nhà cung cấp chưa xác định" : Provider;
+    }
+
+    private string GetFallbackText()
+    {
+        if (IsPerplexity) return "P";
+        if (IsHuflit) return "HU";
+        var value = string.IsNullOrWhiteSpace(Provider) ? "?" : Provider.Trim();
+        return value[..Math.Min(2, value.Length)].ToUpperInvariant();
     }
 }

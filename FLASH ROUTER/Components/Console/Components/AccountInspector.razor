@@ -1,263 +1,262 @@
 @namespace FLASH_ROUTER.Components.Console.Components
 @using FlashAI.Modules.Accounts.Contracts
 @using FlashAI.Modules.Activity.Contracts
+@using FlashAI.Modules.Connections.Contracts
 
 <aside class="account-inspector @(Account is null ? "is-empty" : "")" role="complementary" aria-label="Chi tiết tài khoản">
     @if (Account is null)
     {
         <div class="inspector-empty-state">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect width="18" height="18" x="3" y="3" rx="2"></rect>
-                <path d="M9 3v18"></path>
-            </svg>
-            <span class="empty-text">Chọn một tài khoản để xem thông tin chi tiết</span>
+            <div class="empty-inspector-mark" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="18" height="18" x="3" y="3" rx="3"></rect>
+                    <path d="M9 3v18"></path>
+                    <path d="M14 8h4M14 12h4M14 16h3"></path>
+                </svg>
+            </div>
+            <strong>Chưa chọn account</strong>
+            <span>Chọn một dòng trong danh sách để xem thông tin đã ghi nhận.</span>
         </div>
     }
     else
     {
-        <!-- Header -->
         <div class="inspector-header">
-            <h2 class="inspector-title">Thông tin tài khoản</h2>
-            <button type="button" class="inspector-more-btn" aria-label="Thao tác khác" title="Thao tác khác">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="5" cy="12" r="2"></circle>
-                    <circle cx="12" cy="12" r="2"></circle>
-                    <circle cx="19" cy="12" r="2"></circle>
-                </svg>
-            </button>
+            <div>
+                <span class="inspector-eyebrow">ACCOUNT INSPECTOR</span>
+                <h2 class="inspector-title">Thông tin tài khoản</h2>
+            </div>
+            <span class="inspector-id">#@Account.NumericId</span>
         </div>
 
         <div class="inspector-body">
-            <!-- Hero Identity Card -->
-            <div class="hero-identity-card">
-                <div class="hero-logo-box">
-                    <PlatformLogo Provider="@Account.Provider" Size="48" />
-                </div>
-                <div class="hero-details">
-                    <div class="hero-top-row">
-                        <span class="hero-name">@FormatProviderName(Account.Provider)</span>
-                        <span class="status-pill @GetStatusClass(Account.Status)">
-                            @if (IsActive(Account.Status))
-                            {
-                                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
-                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                                </svg>
-                                <span>Hoạt động</span>
-                            }
-                            else if (IsUnverified(Account.Status))
-                            {
-                                <span class="status-dot"></span>
-                                <span>Chờ xác minh</span>
-                            }
-                            else
-                            {
-                                <span class="status-dot"></span>
-                                <span>Lỗi</span>
-                            }
+            <section class="identity-panel" aria-labelledby="account-identity-title">
+                <PlatformLogo Provider="@Account.Provider" Size="52" />
+                <div class="identity-copy">
+                    <div class="identity-heading">
+                        <h3 id="account-identity-title">@FormatProviderName(Account.Provider)</h3>
+                        <span class="status-pill @GetStatusClass(Account)">
+                            <span class="status-dot"></span>
+                            @GetStatusLabel(Account)
                         </span>
                     </div>
-                    <span class="hero-plan">@FormatPlan(Account.RecordedPlan, Account.Provider)</span>
+                    <span class="identity-email" title="@Account.Email">@Account.Email</span>
+                    <span class="identity-plan">@FormatPlan(Account.RecordedPlan)</span>
                 </div>
-            </div>
+            </section>
 
-            <!-- Metadata List -->
-            <div class="meta-section">
-                <div class="meta-row">
-                    <span class="meta-label">Email</span>
-                    <div class="meta-value-with-action">
-                        <span class="meta-value" title="@Account.Email">@Account.Email</span>
-                        <button type="button" class="copy-icon-btn" @onclick="HandleCopyEmail" title="Sao chép email" aria-label="Sao chép email">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
-                                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
-                            </svg>
+            <section class="detail-section" aria-labelledby="identity-details-title">
+                <div class="section-heading">
+                    <h3 id="identity-details-title">Định danh</h3>
+                    <span>Thông tin đã lưu</span>
+                </div>
+                <div class="detail-grid">
+                    <div class="detail-item detail-item-wide">
+                        <span class="detail-label">Email</span>
+                        <div class="detail-value-row">
+                            <span class="detail-value detail-value-truncate" title="@Account.Email">@Account.Email</span>
+                            <button type="button" class="copy-icon-btn" @onclick="HandleCopyAccount" title="Sao chép tài khoản" aria-label="Sao chép tài khoản">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <rect width="14" height="14" x="8" y="8" rx="2"></rect>
+                                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2-2-2h10c1.1 0 2 .9 2 2"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Nền tảng</span>
+                        <span class="detail-value">@FormatProviderName(Account.Provider)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Gói ghi nhận</span>
+                        <span class="detail-value">@FormatPlan(Account.RecordedPlan)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Trạng thái danh tính</span>
+                        <span class="state-chip @GetIdentityStateClass(Account.IdentityVerificationState)">@FormatIdentityState(Account.IdentityVerificationState)</span>
+                    </div>
+                    <div class="detail-item detail-item-wide">
+                        <span class="detail-label">Email được provider xác minh</span>
+                        <span class="detail-value">@(Account.LastObservedProviderEmail ?? "Chưa có bằng chứng")</span>
+                    </div>
+                    <div class="detail-item detail-item-wide">
+                        <span class="detail-label">Nguồn identity</span>
+                        <span class="detail-value">@(Account.LastIdentityEvidenceSource ?? "Chưa ghi nhận")</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="detail-section" aria-labelledby="security-details-title">
+                <div class="section-heading">
+                    <h3 id="security-details-title">Bảo mật</h3>
+                    <span>Không giải mã trong UI</span>
+                </div>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Credential reference</span>
+                        <span class="state-chip @(IsCredentialReady(Account) ? "state-success" : "state-neutral")">@GetCredentialReferenceText(Account)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">2FA</span>
+                        <span class="state-chip @(Has2Fa(Account) ? "state-success" : "state-neutral")">@GetTwoFactorText(Account)</span>
+                    </div>
+                    <div class="detail-item detail-item-wide">
+                        <span class="detail-label">Nguồn dữ liệu</span>
+                        <span class="detail-value">@Account.DataSource</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="detail-section" aria-labelledby="session-details-title">
+                <div class="section-heading">
+                    <h3 id="session-details-title">Browser session</h3>
+                    <span>Trạng thái quan sát</span>
+                </div>
+                <div class="session-observation">
+                    <div class="observation-line">
+                        <span class="detail-label">Trạng thái phiên</span>
+                        <span class="state-chip @GetSessionStateClass(Account)">@GetSessionStateText(Account)</span>
+                    </div>
+                    <div class="observation-line">
+                        <span class="detail-label">Browser runtime</span>
+                        <span class="state-chip @GetRuntimeStateClass()">@GetRuntimeStateText()</span>
+                    </div>
+                    <div class="observation-line">
+                        <span class="detail-label">Kiểm tra gần nhất</span>
+                        <span class="detail-value">@FormatDate(Account.LastBrowserSessionObservedAtUtc ?? Account.LastCheckedAt)</span>
+                    </div>
+                    <div class="observation-line">
+                        <span class="detail-label">Xác nhận phiên</span>
+                        <span class="detail-value">@FormatDate(Account.LastAuthenticatedSessionConfirmedAtUtc)</span>
+                    </div>
+                    <div class="observation-line">
+                        <span class="detail-label">Identity state</span>
+                        <span class="state-chip @GetIdentityStateClass(Account.IdentityVerificationState)">@FormatIdentityState(Account.IdentityVerificationState)</span>
+                    </div>
+                    <div class="observation-line">
+                        <span class="detail-label">Last attempt</span>
+                        <span class="detail-value">@FormatAttempt(Account.LastAuthenticationAttemptId)</span>
+                    </div>
+                    <div class="observation-line">
+                        <span class="detail-label">Nguồn bằng chứng</span>
+                        <span class="detail-value">@(Account.LastObservationEvidenceSource ?? "Chưa ghi nhận")</span>
+                    </div>
+                    <div class="observation-line">
+                        <span class="detail-label">Mã lỗi an toàn</span>
+                        <span class="detail-value">@(Account.LastObservationErrorCode ?? "Không có")</span>
+                    </div>
+                    <div class="observation-line">
+                        <span class="detail-label">Cập nhật account</span>
+                        <span class="detail-value">@FormatDate(Account.UpdatedAt)</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="detail-section usage-section" aria-labelledby="usage-details-title">
+                <div class="section-heading">
+                    <h3 id="usage-details-title">Usage &amp; Quota</h3>
+                    <span>Chỉ dữ liệu có nguồn tin cậy</span>
+                </div>
+                @if (Usage != null && Usage.Snapshots.Count > 0)
+                {
+                    <div class="usage-list">
+                        @foreach (var usage in Usage.Snapshots.Take(5))
+                        {
+                            <div class="usage-row">
+                                <div>
+                                    <strong>@usage.Capability</strong>
+                                    <span>@usage.CapabilityStatus · @usage.Status · @usage.Scope</span>
+                                </div>
+                                <div class="usage-values">
+                                    <span>@FormatUsageValue(usage.UsedValue, usage.Unit) / @FormatUsageValue(usage.LimitValue, usage.Unit)</span>
+                                    <small>@(usage.RemainingValue.HasValue ? $"Còn {FormatUsageValue(usage.RemainingValue, usage.Unit)}" : "Remaining: chưa có nguồn")</small>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="activity-empty">Chưa có quan sát Usage nào cho account này.</div>
+                }
+            </section>
+
+            <section class="notes-section" aria-labelledby="notes-title">
+                <div class="section-heading">
+                    <h3 id="notes-title">Ghi chú</h3>
+                    @if (_isDirty)
+                    {
+                        <span class="unsaved-label">Chưa lưu</span>
+                    }
+                </div>
+                <textarea class="notes-textarea"
+                          placeholder="Nhập ghi chú cho tài khoản này..."
+                          @bind="_editableNotes"
+                          rows="3"
+                          aria-label="Ghi chú tài khoản"></textarea>
+                @if (_isDirty)
+                {
+                    <div class="notes-actions">
+                        <button type="button" class="notes-save-btn" @onclick="SaveNotes">Lưu ghi chú</button>
+                    </div>
+                }
+            </section>
+
+            <section class="actions-section" aria-label="Hành động tài khoản">
+                <button type="button" class="action-btn btn-launch" @onclick="() => OnOpenAccount.InvokeAsync(Account)" title="Khởi chạy trình duyệt ngay">
+                    <span>Mở trình duyệt</span>
+                </button>
+                <button type="button" class="action-btn btn-edit" @onclick="() => OnCloseBrowser.InvokeAsync(Account)" title="Đóng đúng browser của account này">
+                    <span>Đóng trình duyệt</span>
+                </button>
+                <button type="button" class="action-btn btn-relogin" @onclick="() => OnLoginAgain.InvokeAsync(Account)" title="Thực hiện quy trình đăng nhập lại">
+                    <span>Đăng nhập lại</span>
+                </button>
+                <button type="button" class="action-btn btn-edit" @onclick="() => OnEditAccount.InvokeAsync(Account)" title="Chỉnh sửa thông tin tài khoản">
+                    <span>Sửa thông tin</span>
+                </button>
+                <button type="button" class="action-btn btn-edit" @onclick="HandleCopyAccount" title="Sao chép tài khoản với xác nhận riêng">
+                    <span>Sao chép tài khoản</span>
+                </button>
+                <button type="button" class="action-btn btn-delete" @onclick="() => OnDeleteAccount.InvokeAsync(Account)" title="Xóa tài khoản khỏi hệ thống">
+                    <span>Xóa account</span>
+                </button>
+            </section>
+
+            <section class="activity-section" aria-labelledby="activity-title">
+                <div class="section-heading">
+                    <h3 id="activity-title">Hoạt động gần đây</h3>
+                    <div class="activity-heading-actions">
+                        <span>@ActivityEvents.Count sự kiện</span>
+                        <button type="button" class="activity-console-btn" @onclick="() => OnOpenConsoleLog.InvokeAsync(Account.AccountId)" title="Mở Console Log">
+                            <span aria-hidden="true">›_</span> Console Log
                         </button>
                     </div>
                 </div>
-                <div class="meta-row">
-                    <span class="meta-label">Nền tảng</span>
-                    <span class="meta-value">@FormatProviderName(Account.Provider)</span>
-                </div>
-                <div class="meta-row">
-                    <span class="meta-label">Loại tài khoản</span>
-                    <span class="meta-value">@FormatPlan(Account.RecordedPlan, Account.Provider)</span>
-                </div>
-                <div class="meta-row">
-                    <span class="meta-label">Ngày tạo</span>
-                    <span class="meta-value">@Account.CreatedAt.ToString("dd/MM/yyyy")</span>
-                </div>
-                <div class="meta-row">
-                    <span class="meta-label">Cập nhật cuối</span>
-                    <span class="meta-value">@Account.UpdatedAt.ToString("dd/MM/yyyy HH:mm")</span>
-                </div>
-            </div>
-
-            <!-- Session Status Section -->
-            <div class="session-section">
-                <div class="session-header-row">
-                    <span class="session-label">Tình trạng phiên</span>
-                    <span class="session-duration">Còn 12 ngày</span>
-                </div>
-                <div class="session-progress-row">
-                    <div class="session-progress-bar">
-                        <div class="session-progress-fill" style="width: 80%;"></div>
-                    </div>
-                    <span class="session-percentage">80%</span>
-                </div>
-                <div class="session-meta-row">
-                    <span class="meta-label">Đăng nhập lần cuối</span>
-                    <span class="meta-value">@Account.UpdatedAt.ToString("dd/MM/yyyy HH:mm:ss")</span>
-                </div>
-                <div class="session-meta-row">
-                    <span class="meta-label">2FA</span>
-                    <span class="mfa-status-badge">Đã bật</span>
-                </div>
-            </div>
-
-            <!-- Notes Section -->
-            <div class="notes-section">
-                <span class="notes-label">Ghi chú</span>
-                <div class="notes-box">
-                    <textarea class="notes-textarea"
-                              placeholder="Nhập ghi chú cho tài khoản này..."
-                              @bind="_editableNotes"
-                              rows="2"></textarea>
-                    @if (_isDirty)
-                    {
-                        <div class="notes-actions">
-                            <button type="button" class="notes-save-btn" @onclick="SaveNotes">Lưu ghi chú</button>
-                        </div>
-                    }
-                </div>
-            </div>
-
-            <!-- Action Buttons Grid -->
-            <div class="actions-section">
-                <button type="button"
-                        class="action-btn btn-launch"
-                        @onclick="() => OnOpenAccount.InvokeAsync(Account)"
-                        title="Khởi chạy trình duyệt ngay">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                        <polyline points="15 3 21 3 21 9"></polyline>
-                        <line x1="10" y1="14" x2="21" y2="3"></line>
-                    </svg>
-                    <span>Mở ngay</span>
-                </button>
-
-                <button type="button"
-                        class="action-btn btn-relogin"
-                        @onclick="() => OnLoginAgain.InvokeAsync(Account)"
-                        title="Thực hiện quy trình đăng nhập lại">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-                    </svg>
-                    <span>Đăng nhập lại</span>
-                </button>
-
-                <button type="button"
-                        class="action-btn btn-edit"
-                        @onclick="() => OnEditAccount.InvokeAsync(Account)"
-                        title="Chỉnh sửa thông tin tài khoản">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                    </svg>
-                    <span>Sửa thông tin</span>
-                </button>
-
-                <button type="button"
-                        class="action-btn btn-delete"
-                        @onclick="() => OnDeleteAccount.InvokeAsync(Account)"
-                        title="Xóa tài khoản khỏi hệ thống">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    </svg>
-                    <span>Xóa account</span>
-                </button>
-            </div>
-
-            <!-- Recent Activity Log Section -->
-            <div class="activity-section">
-                <div class="activity-header">
-                    <span class="activity-title">Nhật ký hoạt động gần đây</span>
-                    <a href="javascript:void(0)" class="view-all-link">Xem tất cả</a>
-                </div>
-
-                <div class="activity-list">
-                    @if (ActivityEvents.Count > 0)
-                    {
+                @if (ActivityEvents.Count > 0)
+                {
+                    <div class="activity-list">
                         @foreach (var ev in ActivityEvents.Take(5))
                         {
                             <div class="activity-item">
-                                <span class="activity-dot @GetSeverityDotClass(ev.Severity)"></span>
+                                <span class="activity-dot @GetSeverityDotClass(ev.Severity)" aria-hidden="true"></span>
                                 <div class="activity-info">
                                     <span class="activity-summary">
                                         <span class="severity-tag @ev.Severity.ToLowerInvariant()">[@FormatSeverity(ev.Severity)]</span>
                                         @ev.Summary
                                     </span>
+                                    <span class="activity-time">@ev.Timestamp.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
                                 </div>
-                                <span class="activity-time">@ev.Timestamp.ToString("dd/MM/yyyy HH:mm")</span>
                             </div>
                         }
-                    }
-                    else
-                    {
-                        <!-- Default Mock/Fallback Activity Log matching reference image -->
-                        <div class="activity-item">
-                            <span class="activity-dot dot-blue"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag info">[INFO]</span>
-                                    Kiểm tra phiên
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                        <div class="activity-item">
-                            <span class="activity-dot dot-green"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag pass">[PASS]</span>
-                                    Đăng nhập thành công
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.AddMinutes(-1).ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                        <div class="activity-item">
-                            <span class="activity-dot dot-blue"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag info">[INFO]</span>
-                                    Lấy thông tin tài khoản
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.AddMinutes(-1).ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                        <div class="activity-item">
-                            <span class="activity-dot dot-blue"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag info">[INFO]</span>
-                                    Gia hạn phiên tự động
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.AddDays(-1).ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                        <div class="activity-item">
-                            <span class="activity-dot dot-green"></span>
-                            <div class="activity-info">
-                                <span class="activity-summary">
-                                    <span class="severity-tag pass">[PASS]</span>
-                                    Phiên vẫn còn hiệu lực
-                                </span>
-                            </div>
-                            <span class="activity-time">@DateTime.Now.AddDays(-1).ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                    }
-                </div>
-            </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="activity-empty">
+                        Chưa có sự kiện hoạt động nào được ghi nhận cho account này.
+                    </div>
+                }
+            </section>
         </div>
     }
 </aside>
@@ -265,12 +264,16 @@
 @code {
     [Parameter] public AccountDetailVm? Account { get; set; }
     [Parameter] public IReadOnlyList<ActivityEventVm> ActivityEvents { get; set; } = [];
+    [Parameter] public BrowserRuntimeSnapshot? BrowserRuntime { get; set; }
+    [Parameter] public AccountUsageView? Usage { get; set; }
     [Parameter] public EventCallback<AccountDetailVm> OnOpenAccount { get; set; }
     [Parameter] public EventCallback<AccountDetailVm> OnLoginAgain { get; set; }
+    [Parameter] public EventCallback<AccountDetailVm> OnCloseBrowser { get; set; }
     [Parameter] public EventCallback<AccountDetailVm> OnEditAccount { get; set; }
     [Parameter] public EventCallback<AccountDetailVm> OnDeleteAccount { get; set; }
     [Parameter] public EventCallback<(Guid Id, string Notes)> OnSaveNotes { get; set; }
-    [Parameter] public EventCallback<string> OnCopyEmail { get; set; }
+    [Parameter] public EventCallback<Guid> OnCopyAccount { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenConsoleLog { get; set; }
 
     private string _editableNotes = "";
     private Guid? _currentAccountId;
@@ -281,15 +284,15 @@
         if (Account != null && Account.AccountId != _currentAccountId)
         {
             _currentAccountId = Account.AccountId;
-            _editableNotes = Account.Notes ?? "Tài khoản chính để làm việc, ưu tiên duy trì.";
+            _editableNotes = Account.Notes ?? "";
         }
     }
 
-    private async Task HandleCopyEmail()
+    private async Task HandleCopyAccount()
     {
         if (Account != null)
         {
-            await OnCopyEmail.InvokeAsync(Account.Email);
+            await OnCopyAccount.InvokeAsync(Account.AccountId);
         }
     }
 
@@ -301,15 +304,99 @@
         }
     }
 
-    private static bool IsActive(string status) => status.Equals("Connected", StringComparison.OrdinalIgnoreCase) || status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+    private static bool IsActive(AccountDetailVm account)
+        => account.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase);
     private static bool IsUnverified(string status) => status.Equals("Unverified", StringComparison.OrdinalIgnoreCase);
 
-    private static string GetStatusClass(string status)
+    private static bool Has2Fa(AccountDetailVm account)
+        => account.Tags?.Any(t => t.Contains("2fa", StringComparison.OrdinalIgnoreCase)) == true;
+
+    private static string GetTwoFactorText(AccountDetailVm account)
+        => Has2Fa(account) ? "Đã ghi nhận" : "Chưa xác minh";
+
+    private static bool IsCredentialReady(AccountDetailVm account)
+        => account.CredentialReferencePresent;
+
+    private static string GetCredentialReferenceText(AccountDetailVm account)
+        => IsCredentialReady(account) ? "Đã lưu tham chiếu" : "Chưa ghi nhận";
+
+    private static string GetSessionStateText(AccountDetailVm account)
+        => account.AuthenticationState switch
+        {
+            "AuthenticatedSessionConfirmed" => "Đăng nhập thành công",
+            "LoginInProgress" or "MfaRequired" => "Đang xác minh phiên",
+            "WaitingForUser" => "Cần thao tác người dùng",
+            "InvalidCredentials" => "Thông tin không hợp lệ",
+            _ => "Chưa xác minh"
+        };
+
+    private static string GetSessionStateClass(AccountDetailVm account)
+        => account.AuthenticationState == "AuthenticatedSessionConfirmed"
+            ? "state-success"
+            : account.AuthenticationState is "InvalidCredentials" or "WaitingForUser" ? "state-warning" : "state-neutral";
+
+    private string GetRuntimeStateText()
+        => BrowserRuntime?.RuntimeState switch
+        {
+            AccountBrowserRuntimeState.Open => "Đang mở",
+            AccountBrowserRuntimeState.Launching => "Đang khởi chạy",
+            AccountBrowserRuntimeState.Closing => "Đang đóng",
+            AccountBrowserRuntimeState.Crashed => "Đã dừng bất thường",
+            AccountBrowserRuntimeState.ProfileInUse => "Profile đang được dùng",
+            AccountBrowserRuntimeState.Disconnected => "Mất kết nối",
+            AccountBrowserRuntimeState.Unknown => "Chưa xác định",
+            _ => "Đã đóng"
+        };
+
+    private string GetRuntimeStateClass()
+        => BrowserRuntime?.RuntimeState switch
+        {
+            AccountBrowserRuntimeState.Open => "state-success",
+            AccountBrowserRuntimeState.Launching or AccountBrowserRuntimeState.Closing or AccountBrowserRuntimeState.ProfileInUse => "state-warning",
+            AccountBrowserRuntimeState.Crashed or AccountBrowserRuntimeState.Disconnected => "state-danger",
+            _ => "state-neutral"
+        };
+
+    private static string FormatUsageValue(decimal? value, string? unit)
+        => value.HasValue ? $"{value.Value:0.##} {unit}" : "Chưa có nguồn";
+
+    private static string GetStatusClass(AccountDetailVm account)
     {
-        if (IsActive(status)) return "status-active";
-        if (IsUnverified(status)) return "status-unverified";
+        if (IsActive(account)) return "status-active";
+        if (IsUnverified(account.Status) || account.AuthenticationState.Equals("LoginInProgress", StringComparison.OrdinalIgnoreCase)) return "status-unverified";
+        if (account.Status.Equals("ReauthNeeded", StringComparison.OrdinalIgnoreCase)) return "status-warning";
         return "status-failed";
     }
+
+    private static string GetStatusLabel(AccountDetailVm account)
+        => account.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase)
+            ? "Đã xác minh phiên"
+            : account.AuthenticationState.Equals("LoginInProgress", StringComparison.OrdinalIgnoreCase)
+                ? "Đang đăng nhập"
+                : string.IsNullOrWhiteSpace(account.StatusLabel) ? "Chưa xác minh" : account.StatusLabel;
+
+    private static string FormatIdentityState(string state)
+        => state switch
+        {
+            "IdentityVerified" => "Đã xác minh danh tính",
+            "IdentityObserved" => "Đã quan sát danh tính",
+            "Mismatch" => "Danh tính không khớp",
+            "Unverified" => "Chưa đủ bằng chứng",
+            "PartiallyResolved" => "Xác minh một phần",
+            "Unsupported" => "Không hỗ trợ",
+            "Unauthorized" => "Chưa được cấp quyền",
+            "Checking" => "Đang xác minh",
+            _ => "Chờ xác minh danh tính"
+        };
+
+    private static string GetIdentityStateClass(string state)
+        => state switch
+        {
+            "IdentityVerified" => "state-success",
+            "Mismatch" => "state-danger",
+            "Checking" or "IdentityObserved" => "state-warning",
+            _ => "state-neutral"
+        };
 
     private static string FormatProviderName(string provider)
     {
@@ -321,48 +408,32 @@
         return provider;
     }
 
-    private static string FormatPlan(string plan, string provider)
-    {
-        if (!string.IsNullOrWhiteSpace(plan) && !plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!plan.Contains(FormatProviderName(provider), StringComparison.OrdinalIgnoreCase))
-            {
-                return $"{FormatProviderName(provider)} {plan}";
-            }
-            return plan;
-        }
+    private static string FormatPlan(string plan)
+        => string.IsNullOrWhiteSpace(plan) || plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase)
+            ? "Chưa xác minh"
+            : plan;
 
-        var name = FormatProviderName(provider);
-        return name switch
-        {
-            "ChatGPT" => "ChatGPT Plus",
-            "Claude" => "Claude Pro",
-            "Gemini" => "Gemini Advanced",
-            "Perplexity" => "Perplexity Pro",
-            "HUFLIT" => "HUFLIT Portal",
-            _ => "Standard"
-        };
-    }
+    private static string FormatDate(DateTimeOffset? value)
+        => value.HasValue ? value.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "Chưa ghi nhận";
+
+    private static string FormatAttempt(Guid? attemptId)
+        => attemptId is Guid value ? value.ToString("N")[..12] : "Chưa có";
 
     private static string FormatSeverity(string severity)
-    {
-        return severity.ToUpperInvariant() switch
+        => severity.ToUpperInvariant() switch
         {
             "SUCCESS" or "PASS" => "PASS",
             "WARNING" or "WARN" => "WARN",
             "ERROR" => "ERROR",
             _ => "INFO"
         };
-    }
 
     private static string GetSeverityDotClass(string severity)
-    {
-        return severity.ToUpperInvariant() switch
+        => severity.ToUpperInvariant() switch
         {
             "SUCCESS" or "PASS" => "dot-green",
             "WARNING" or "WARN" => "dot-amber",
             "ERROR" => "dot-red",
             _ => "dot-blue"
         };
-    }
 }

@@ -1,6 +1,5 @@
 using System.Data.Common;
-using System.Security.Cryptography;
-using System.Text.Json;
+using FlashAI.Foundation.Contracts;
 using FlashAI.Foundation.Persistence;
 using FlashAI.Foundation.Security;
 using FlashAI.Modules.Connections.Contracts;
@@ -11,20 +10,23 @@ namespace FlashAI.Modules.Connections.Application;
 public sealed class AccountCopyUiPort : IAccountCopyUiPort
 {
     private readonly IDbContextFactory<FlashAiDbContext> _contextFactory;
-    private readonly ISecretVault _vault;
-    private readonly IVaultAccessState _vaultAccess;
+    private readonly BrowserAuthCredentialReader _credentialReader;
+    private readonly IAuditSink? _auditSink;
 
     public AccountCopyUiPort(
         IDbContextFactory<FlashAiDbContext> contextFactory,
         ISecretVault vault,
-        IVaultAccessState vaultAccess)
+        IVaultAccessState? legacyVaultAccess = null,
+        IAuditSink? auditSink = null)
     {
         _contextFactory = contextFactory;
-        _vault = vault;
-        _vaultAccess = vaultAccess;
+        _credentialReader = new BrowserAuthCredentialReader(contextFactory, vault, legacyVaultAccess);
+        _auditSink = auditSink;
     }
 
-    public async Task<AccountCopyResult> CopyBasicAsync(Guid accountId, CancellationToken cancellationToken = default)
+    public async Task<AccountCopyResult> CopyBasicAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default)
     {
         var account = await ReadAccountAsync(accountId, cancellationToken);
         return account is null
@@ -43,112 +45,105 @@ public sealed class AccountCopyUiPort : IAccountCopyUiPort
     {
         if (!confirmed)
         {
-            return AccountCopyResult.Failure("COPY_CONFIRMATION_REQUIRED", "Cần xác nhận riêng trước khi sao chép credential plaintext.");
+            await AuditAsync(accountId, "CredentialExportRequested", "Credential export confirmation was not granted.", "Info", "outcome=confirmation-required", cancellationToken);
+            return AccountCopyResult.Failure("COPY_CONFIRMATION_REQUIRED", "Cần xác nhận riêng trước khi sao chép email, password và 2FA vào clipboard.");
         }
 
-        if (!_vaultAccess.IsUnlocked)
+        await AuditAsync(accountId, "CredentialExportRequested", "Credential export was explicitly requested by the operator.", "Warning", "outcome=requested", cancellationToken);
+        var credential = await _credentialReader.ReadAsync(accountId, cancellationToken);
+        if (!credential.IsSuccess || credential.Credential is null)
         {
-            return AccountCopyResult.Failure("VAULT_LOCKED", "Hãy mở khóa Vault trước khi sao chép credential đã lưu.");
+            await AuditAsync(accountId, "CredentialExportFailed", "Credential export could not resolve a compatible protected credential.", "Warning", $"errorCode={credential.Status}", cancellationToken);
+            return AccountCopyResult.Failure(credential.Status, credential.Message);
         }
 
-        var reference = await ReadCredentialReferenceAsync(accountId, cancellationToken);
-        if (reference is null)
-        {
-            return AccountCopyResult.Failure("CREDENTIAL_NOT_FOUND", "Tài khoản này chưa có credential ChatGPT đã lưu.");
-        }
+        var text = CredentialLineCodec.Serialize(new CredentialLine(
+            credential.Credential.Email,
+            credential.Credential.Password,
+            credential.Credential.TotpSeed));
 
-        var payload = await _vault.ReadAsync(reference.Value.VaultKey, cancellationToken);
-        if (payload is null)
-        {
-            return AccountCopyResult.Failure("CREDENTIAL_UNAVAILABLE", "Không đọc được credential từ Vault. Không có dữ liệu nào được sao chép.");
-        }
-
-        var bytes = payload.Value.ToArray();
-        try
-        {
-            var credential = JsonSerializer.Deserialize<StoredChatGptCredential>(bytes);
-            if (credential is null || string.IsNullOrWhiteSpace(credential.Email) || string.IsNullOrEmpty(credential.Password))
-            {
-                return AccountCopyResult.Failure("CREDENTIAL_INVALID", "Credential trong Vault không hợp lệ.");
-            }
-
-            var text = CredentialLineCodec.Serialize(new CredentialLine(credential.Email, credential.Password, credential.TotpSeed));
-            return AccountCopyResult.Success(
-                "CredentialCopyReady",
-                "Đã chuẩn bị credential để sao chép. Clipboard có thể lưu dữ liệu plaintext.",
-                text,
-                containsSecret: true);
-        }
-        catch (JsonException)
-        {
-            return AccountCopyResult.Failure("CREDENTIAL_INVALID", "Credential trong Vault không hợp lệ.");
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(bytes);
-        }
+        await AuditAsync(accountId, "CredentialReferenceResolved", "Protected credential reference resolved for the user-initiated clipboard operation.", "Info", "outcome=ready;payload=redacted", cancellationToken);
+        return AccountCopyResult.Success(
+            "CredentialCopyReady",
+            "Đã chuẩn bị credential để sao chép. Clipboard có thể lưu dữ liệu plaintext.",
+            text,
+            containsSecret: true);
     }
+
+    public Task RecordClipboardOutcomeAsync(
+        Guid accountId,
+        bool succeeded,
+        string? errorCode = null,
+        CancellationToken cancellationToken = default)
+        => AuditAsync(
+            accountId,
+            succeeded ? "AccountCredentialExportedToClipboard" : "CredentialExportFailed",
+            succeeded
+                ? "Credential tuple was handed to the user-initiated clipboard operation."
+                : "Clipboard operation failed after protected credential resolution.",
+            succeeded ? "Warning" : "Error",
+            succeeded
+                ? "outcome=success;payload=redacted"
+                : $"outcome=clipboard-failed;errorCode={SanitizeErrorCode(errorCode)}",
+            cancellationToken);
 
     private async Task<(string Email, string DisplayName, string Provider)?> ReadAccountAsync(
         Guid accountId,
         CancellationToken cancellationToken)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var connection = await OpenConnectionAsync(context, cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Email, DisplayName, Provider FROM AccountProfiles WHERE Id = $accountId AND IsArchived = 0";
-        AddAccountParameter(command, accountId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return !await reader.ReadAsync(cancellationToken)
-            ? null
-            : (reader.GetString(0), reader.GetString(1), reader.GetString(2));
-    }
-
-    private async Task<(string VaultKey, Guid ConnectionId)?> ReadCredentialReferenceAsync(
-        Guid accountId,
-        CancellationToken cancellationToken)
-    {
-        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var connection = await OpenConnectionAsync(context, cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT credentialReferences.VaultKey, connections.Id
-            FROM ProviderCredentialReferences AS credentialReferences
-            INNER JOIN ProviderConnections AS connections ON connections.Id = credentialReferences.ConnectionId
-            WHERE connections.AccountId = $accountId
-              AND connections.ProviderId = 'openai-chatgpt'
-              AND connections.ConnectionKind = 'Manual'
-              AND connections.Status <> 'Disconnected'
-            ORDER BY connections.CreatedAtUtc DESC
-            LIMIT 1
-            """;
-        AddAccountParameter(command, accountId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
-        {
-            return null;
-        }
-
-        return (reader.GetString(0), Guid.Parse(reader.GetString(1)));
-    }
-
-    private static async Task<DbConnection> OpenConnectionAsync(FlashAiDbContext context, CancellationToken cancellationToken)
-    {
         var connection = context.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open)
         {
             await connection.OpenAsync(cancellationToken);
         }
 
-        return connection;
-    }
-
-    private static void AddAccountParameter(DbCommand command, Guid accountId)
-    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Email, DisplayName, Provider FROM AccountProfiles WHERE Id = $accountId AND IsArchived = 0";
         var parameter = command.CreateParameter();
         parameter.ParameterName = "$accountId";
         parameter.Value = accountId;
         command.Parameters.Add(parameter);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return !await reader.ReadAsync(cancellationToken)
+            ? null
+            : (reader.GetString(0), reader.GetString(1), reader.GetString(2));
+    }
+
+    private async Task AuditAsync(
+        Guid accountId,
+        string eventType,
+        string summary,
+        string severity,
+        string details,
+        CancellationToken cancellationToken)
+    {
+        if (_auditSink is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _auditSink.WriteAsync(accountId, eventType, summary, severity, details, cancellationToken: cancellationToken);
+        }
+        catch
+        {
+            // Clipboard export must not expose a secret or fail because audit storage is unavailable.
+        }
+    }
+
+    private static string SanitizeErrorCode(string? errorCode)
+    {
+        if (string.IsNullOrWhiteSpace(errorCode))
+        {
+            return "CLIPBOARD_WRITE_FAILED";
+        }
+
+        return new string(errorCode
+            .Where(character => char.IsLetterOrDigit(character) || character is '_' or '-')
+            .Take(120)
+            .ToArray());
     }
 }
 
@@ -158,5 +153,8 @@ public sealed class PreviewAccountCopyUiPort : IAccountCopyUiPort
         => Task.FromResult(AccountCopyResult.Failure("PREVIEW_COPY_DISABLED", "Preview mode không chuẩn bị clipboard payload từ dữ liệu tổng hợp."));
 
     public Task<AccountCopyResult> CopySavedCredentialsAsync(Guid accountId, bool confirmed, CancellationToken cancellationToken = default)
-        => Task.FromResult(AccountCopyResult.Failure("PREVIEW_COPY_DISABLED", "Preview mode không đọc credential. Chuyển sang Integrated mode và mở khóa Vault trước."));
+        => Task.FromResult(AccountCopyResult.Failure("PREVIEW_COPY_DISABLED", "Preview mode không đọc credential. Chuyển sang Integrated mode để dùng Windows-bound credential access."));
+
+    public Task RecordClipboardOutcomeAsync(Guid accountId, bool succeeded, string? errorCode = null, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 }
