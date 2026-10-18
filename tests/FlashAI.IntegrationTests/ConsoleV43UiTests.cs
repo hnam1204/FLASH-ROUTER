@@ -69,6 +69,24 @@ public sealed class ConsoleV43UiTests
     }
 
     [Fact]
+    public void ConsoleLogBackfillsHistoryExplainsEmptyFiltersAndDeduplicatesLiveEvents()
+    {
+        var root = WorkspaceRoot();
+        var console = File.ReadAllText(Path.Combine(root, "FLASH ROUTER", "Components", "Console", "AutoLoginConsole.razor"));
+        var activityPort = File.ReadAllText(Path.Combine(root, "src", "Modules", "Operations", "Activity", "Application", "SqliteActivityUiPort.cs"));
+        var activityContract = File.ReadAllText(Path.Combine(root, "src", "Modules", "Operations", "Activity", "Contracts", "IActivityUiPort.cs"));
+
+        Assert.Contains("ActivityPort.GetEventsAsync(accountId)", console, StringComparison.Ordinal);
+        Assert.Contains("GroupBy(item => item.EventId)", console, StringComparison.Ordinal);
+        Assert.Contains("GetConsoleLogEmptyMessage", console, StringComparison.Ordinal);
+        Assert.Contains("Xóa bộ lọc", console, StringComparison.Ordinal);
+        Assert.Contains("ClearConsoleLogView", console, StringComparison.Ordinal);
+        Assert.Contains("Guid? attemptId = null", activityContract, StringComparison.Ordinal);
+        Assert.Contains("item.AttemptId == attemptId.Value", activityPort, StringComparison.Ordinal);
+        Assert.Contains("Attempt:", console, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void V43ConsoleKeepsVietnameseLabelsReadable()
     {
         var root = WorkspaceRoot();

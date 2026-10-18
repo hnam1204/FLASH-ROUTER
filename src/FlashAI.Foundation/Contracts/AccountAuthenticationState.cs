@@ -17,7 +17,10 @@ public sealed record AccountAuthenticationStateUpdate(
     DateTimeOffset? IdentityVerifiedAtUtc = null,
     DateTimeOffset? ObservedAtUtc = null,
     string? EvidenceSource = null,
-    string? SanitizedFailureCode = null);
+    string? SanitizedFailureCode = null,
+    string? ObservedProviderEmail = null,
+    string? IdentityEvidenceSource = null,
+    string? IdentityReasonCode = null);
 
 public sealed record AccountAuthenticationStateSnapshot(
     Guid AccountId,
@@ -31,7 +34,10 @@ public sealed record AccountAuthenticationStateSnapshot(
     DateTimeOffset? LastIdentityVerifiedAtUtc,
     DateTimeOffset? LastObservationAtUtc,
     string? EvidenceSource,
-    string? SanitizedFailureCode);
+    string? SanitizedFailureCode,
+    string? ObservedProviderEmail,
+    string? IdentityEvidenceSource,
+    string? IdentityReasonCode);
 
 public interface IAccountAuthenticationStateStore
 {

@@ -19,7 +19,8 @@ public sealed record AccountUsageSnapshot(
     DateTimeOffset? NextCheckAtUtc,
     string? EvidenceSource,
     string? SanitizedFailureCode,
-    bool IsStale);
+    bool IsStale,
+    string CapabilityStatus = "Supported");
 
 public sealed record AccountUsageView(
     Guid AccountId,

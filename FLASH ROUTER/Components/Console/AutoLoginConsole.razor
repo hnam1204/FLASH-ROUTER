@@ -182,7 +182,7 @@
                     <div>
                         <span class="inspector-eyebrow">LIVE AUTOMATION</span>
                         <h2 id="console-log-title">Nhật ký tự động hóa</h2>
-            <p>Theo dõi toàn bộ quá trình đăng nhập và quản lý trình duyệt · @(_selectedAccountDetail?.Email ?? "Tài khoản chưa chọn")</p>
+                    <p>Theo dõi toàn bộ lịch sử account và quản lý trình duyệt · @(_selectedAccountDetail?.Email ?? "Tài khoản chưa chọn")</p>
                 <div class="console-log-context" aria-label="Ngữ cảnh nhật ký tự động hóa">
                             <span>Provider: @FormatProviderName(_selectedAccountDetail?.Provider ?? "Chưa rõ")</span>
                             <span>Attempt: @FormatAttemptId(_selectedAccountDetail?.LastAuthenticationAttemptId)</span>
@@ -208,7 +208,11 @@
                 <div id="console-log-stream" class="console-log-stream" role="log" aria-live="polite">
                     @if (FilteredConsoleEvents.Count == 0)
                     {
-                        <div class="console-log-empty">@(_selectedAccountActivities.Count == 0 ? "Chưa có nhật ký" : "Không có sự kiện phù hợp bộ lọc")</div>
+                        <div class="console-log-empty">@GetConsoleLogEmptyMessage()</div>
+                        @if (_selectedAccountActivities.Count > 0 && HasConsoleLogFilter)
+                        {
+                            <button type="button" class="console-log-clear-filter" @onclick="ClearConsoleLogFilters">Xóa bộ lọc</button>
+                        }
                     }
                     else
                     {
@@ -315,6 +319,10 @@
             .ThenBy(item => item.EventId)
             .Take(200)
             .ToArray();
+
+    private bool HasConsoleLogFilter
+        => !_consoleLogSeverity.Equals("all", StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrWhiteSpace(_consoleLogSearch);
 
     protected override async Task OnInitializedAsync()
     {
@@ -459,15 +467,32 @@
 
     private async Task HandleAccountSelected(Guid accountId)
     {
+        if (_selectedAccountId != accountId)
+        {
+            _selectedAccountDetail = null;
+            _selectedAccountActivities = [];
+            _selectedBrowserRuntime = null;
+            _selectedUsage = null;
+        }
+
         _selectedAccountId = accountId;
         await LoadAccountDetailAsync(accountId);
     }
 
     private async Task LoadAccountDetailAsync(Guid accountId)
     {
+        AccountDetailVm? detail = null;
         try
         {
-            var detail = await AccountReader.GetAccountDetailAsync(accountId);
+            detail = await AccountReader.GetAccountDetailAsync(accountId);
+        }
+        catch
+        {
+            detail = null;
+        }
+
+        try
+        {
             var connections = await AccountConnectionsReader.ListForAccountAsync(accountId);
             var credentialReferencePresent = connections.Any(connection =>
                 connection.ProviderId.Equals("openai-chatgpt", StringComparison.OrdinalIgnoreCase)
@@ -476,16 +501,40 @@
             _selectedAccountDetail = detail is null
                 ? null
                 : detail with { CredentialReferencePresent = credentialReferencePresent };
+        }
+        catch
+        {
+            _selectedAccountDetail = detail;
+        }
+
+        try
+        {
             var events = await ActivityPort.GetEventsAsync(accountId);
-            _selectedAccountActivities = events.ToList();
+            _selectedAccountActivities = events
+                .GroupBy(item => item.EventId)
+                .Select(group => group.First())
+                .ToList();
+        }
+        catch
+        {
+            // Keep the last historical journal visible when another projection fails.
+        }
+
+        try
+        {
             _selectedBrowserRuntime = await BrowserSessionManager.GetStatusAsync(accountId);
+        }
+        catch
+        {
+            _selectedBrowserRuntime = null;
+        }
+
+        try
+        {
             _selectedUsage = await AccountUsageReader.GetAsync(accountId);
         }
         catch
         {
-            _selectedAccountDetail = null;
-            _selectedAccountActivities = [];
-            _selectedBrowserRuntime = null;
             _selectedUsage = null;
         }
     }
@@ -827,6 +876,12 @@
         {
             await HandleAccountSelected(accountId);
         }
+        else
+        {
+            // Backfill durable history at modal-open time so a live connection is
+            // never mistaken for proof that historical events were loaded.
+            await LoadAccountDetailAsync(accountId);
+        }
 
         _consoleLogSeverity = "all";
         _consoleLogSearch = string.Empty;
@@ -842,6 +897,27 @@
     {
         _clearedConsoleEvents.Clear();
         _clearedConsoleEvents.AddRange(_selectedAccountActivities);
+    }
+
+    private void ClearConsoleLogFilters()
+    {
+        _consoleLogSeverity = "all";
+        _consoleLogSearch = string.Empty;
+    }
+
+    private string GetConsoleLogEmptyMessage()
+    {
+        if (_selectedAccountActivities.Count == 0)
+        {
+            return "Chưa có nhật ký lịch sử cho account này. Hãy hoàn tất một thao tác để ghi nhận sự kiện.";
+        }
+
+        if (_consoleLogSeverity is not "all")
+        {
+            return $"Không có sự kiện phù hợp mức lọc '{FormatSeverity(_consoleLogSeverity)}'.";
+        }
+
+        return "Không có sự kiện phù hợp nội dung tìm kiếm hoặc hiển thị hiện tại.";
     }
 
     private async Task CopyConsoleLog()

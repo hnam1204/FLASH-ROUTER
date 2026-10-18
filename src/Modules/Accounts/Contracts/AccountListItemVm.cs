@@ -22,4 +22,7 @@ public sealed record AccountListItemVm(
     DateTimeOffset? LastObservationAtUtc = null,
     string? LastObservationEvidenceSource = null,
     string? LastObservationErrorCode = null,
-    Guid? LastAuthenticationAttemptId = null);
+    Guid? LastAuthenticationAttemptId = null,
+    string? LastObservedProviderEmail = null,
+    string? LastIdentityEvidenceSource = null,
+    string? LastIdentityReasonCode = null);

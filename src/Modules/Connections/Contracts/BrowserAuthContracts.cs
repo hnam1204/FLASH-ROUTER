@@ -21,7 +21,9 @@ public enum BrowserAuthState
     Failed,
     Cancelled,
     TimedOut,
-    Unknown
+    Unknown,
+    IdentityMismatch,
+    IdentityUnverified
 }
 
 public enum AuthenticationObservationStatus
@@ -42,6 +44,8 @@ public enum IdentityVerificationStatus
     Checking,
     IdentityObserved,
     IdentityVerified,
+    Mismatch,
+    Unverified,
     PartiallyResolved,
     Unsupported,
     Unauthorized,
@@ -262,7 +266,41 @@ public sealed record AuthenticationObservationResult(
     IdentityVerificationStatus IdentityStatus,
     DateTimeOffset ObservedAtUtc,
     string EvidenceSource,
-    string? SanitizedFailureCode);
+    string? SanitizedFailureCode,
+    string? ObservedProviderEmail = null,
+    string? IdentityEvidenceSource = null,
+    string? IdentityReasonCode = null);
+
+public sealed record BrowserIdentityEvidence(
+    bool AuthenticatedShellDetected,
+    bool AccountMenuDetected,
+    string? ObservedEmail,
+    string? ObservedDisplayName,
+    string EvidenceSource,
+    string? SafeReasonCode,
+    DateTimeOffset ObservedAtUtc);
+
+public sealed record ProviderIdentityVerificationRequest(
+    Guid AccountId,
+    Guid AttemptId,
+    Guid BrowserProfileBindingId,
+    string ProviderId,
+    string IntendedAccountEmail,
+    IBrowserAuthenticationSession Session);
+
+public sealed record ProviderIdentityVerificationResult(
+    Guid AccountId,
+    Guid AttemptId,
+    Guid BrowserProfileBindingId,
+    string ProviderId,
+    IdentityVerificationStatus Status,
+    DateTimeOffset ObservedAtUtc,
+    string EvidenceSource,
+    string? ObservedProviderEmail,
+    string? SafeReasonCode)
+{
+    public bool IsVerified => Status == IdentityVerificationStatus.IdentityVerified;
+}
 
 public sealed record BrowserAuthResult(
     bool IsSuccess,
@@ -327,6 +365,22 @@ public interface IBrowserAuthenticationSession : IAsyncDisposable
 public interface IBrowserAuthenticationSessionDiagnostics
 {
     BrowserAuthTimingSnapshot Timing { get; }
+}
+
+/// <summary>
+/// Optional capability for sessions that can inspect safe, visible account UI.
+/// It deliberately does not expose cookies, headers, page HTML or private API data.
+/// </summary>
+public interface IBrowserIdentityObservationSession
+{
+    Task<BrowserIdentityEvidence> ReadIdentityEvidenceAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IProviderAccountVerificationService
+{
+    Task<ProviderIdentityVerificationResult> VerifyAsync(
+        ProviderIdentityVerificationRequest request,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IBrowserAuthenticationSessionFactory

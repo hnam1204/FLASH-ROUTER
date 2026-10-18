@@ -50,6 +50,27 @@ public sealed class ActivityJournalTests : IAsyncLifetime
         Assert.Equal("challenge=required", secondEvent.SafeDetails);
     }
 
+    [Fact]
+    public async Task HistoricalJournalCanFilterByAttemptWithoutDroppingOtherAccountHistory()
+    {
+        var accountId = await CreateAccountAsync("journal-attempt@example.test");
+        var selectedAttempt = Guid.NewGuid();
+        var otherAttempt = Guid.NewGuid();
+        var sink = new SqliteAuditSink(_database.ContextFactory);
+
+        await sink.WriteAsync(accountId, "AttemptStarted", "Selected attempt started.", correlationId: "selected", attemptId: selectedAttempt);
+        await sink.WriteAsync(accountId, "AttemptFailed", "Other attempt failed.", correlationId: "other", attemptId: otherAttempt);
+
+        var reader = new SqliteActivityUiPort(_database.ContextFactory);
+        var all = await reader.GetEventsAsync(accountId);
+        var selected = await reader.GetEventsAsync(accountId, attemptId: selectedAttempt);
+
+        Assert.Equal(2, all.Count);
+        var eventForAttempt = Assert.Single(selected);
+        Assert.Equal(selectedAttempt, eventForAttempt.AttemptId);
+        Assert.Equal("AttemptStarted", eventForAttempt.EventType);
+    }
+
     private async Task<Guid> CreateAccountAsync(string email)
     {
         await using var scope = _database.Services.CreateAsyncScope();

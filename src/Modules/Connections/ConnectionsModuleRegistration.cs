@@ -80,6 +80,7 @@ public static class ConnectionsModuleRegistration
         services.AddSingleton<IConsoleProviderRegistry, ConsoleProviderRegistry>();
         services.AddSingleton<IBrowserAuthenticationSessionFactory, PlaywrightBrowserAuthenticationSessionFactory>();
         services.AddSingleton<IBrowserPageStateDetector, StableBrowserPageStateDetector>();
+        services.AddSingleton<IProviderAccountVerificationService, ProviderAccountVerificationService>();
         services.AddScoped<BrowserAuthCredentialReader>();
         services.AddScoped<ICleanBrowserReloginService, CleanBrowserReloginService>();
         services.AddScoped<BrowserAuthOrchestrator>();

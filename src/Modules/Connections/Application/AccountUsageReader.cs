@@ -74,7 +74,7 @@ public sealed class AccountUsageReader : IAccountUsageReader
                     connection.ConnectionId,
                     connection.ProviderId,
                     group.Key.Capability,
-                    group.Key.Scope.ToString(),
+                    ResolveScope(connection.ProviderId, connection.ConnectionKind, group.Key.Scope.ToString(), connection.Scope),
                     status,
                     used,
                     limit,
@@ -122,7 +122,8 @@ public sealed class AccountUsageReader : IAccountUsageReader
                             sync?.NextEligibleAtUtc,
                             descriptor.DocumentationReference,
                             lastCheck?.SafeErrorCode,
-                            false));
+                            false,
+                            "Supported"));
                     }
                 }
             }
@@ -141,7 +142,7 @@ public sealed class AccountUsageReader : IAccountUsageReader
             connection.ConnectionId,
             connection.ProviderId,
             ProviderCapability.Usage,
-            ProviderObservationScope.Unknown.ToString(),
+            "ChatGPTWebPersonal",
             "Unsupported",
             null,
             null,
@@ -153,7 +154,31 @@ public sealed class AccountUsageReader : IAccountUsageReader
             nextCheckAtUtc,
             evidence,
             "USAGE_SOURCE_UNSUPPORTED",
-            false);
+            false,
+            "Unsupported");
+
+    private static string ResolveScope(
+        string providerId,
+        ConnectionKind connectionKind,
+        string observedScope,
+        string? configuredScope)
+    {
+        if (providerId.Equals("openai-chatgpt", StringComparison.OrdinalIgnoreCase)
+            && connectionKind == ConnectionKind.Manual)
+        {
+            return "ChatGPTWebPersonal";
+        }
+
+        if (providerId.Equals("openai-platform", StringComparison.OrdinalIgnoreCase)
+            || providerId.Equals("openai", StringComparison.OrdinalIgnoreCase))
+        {
+            return (configuredScope ?? observedScope).Contains("project", StringComparison.OrdinalIgnoreCase)
+                ? "OpenAIApiProject"
+                : "OpenAIApiOrganization";
+        }
+
+        return observedScope;
+    }
 
     private static decimal? Parse(
         IReadOnlyList<ProviderObservationSnapshot> observations,

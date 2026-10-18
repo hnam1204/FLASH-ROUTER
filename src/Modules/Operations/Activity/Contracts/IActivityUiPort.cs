@@ -5,5 +5,6 @@ public interface IActivityUiPort
     Task<IReadOnlyList<ActivityEventVm>> GetEventsAsync(
         Guid? accountId = null,
         string? severity = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        Guid? attemptId = null);
 }

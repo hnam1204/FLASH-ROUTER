@@ -49,7 +49,7 @@ public sealed class PreviewActivityUiPort : IActivityUiPort
         ]);
     }
 
-    public Task<IReadOnlyList<ActivityEventVm>> GetEventsAsync(Guid? accountId = null, string? severity = null, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<ActivityEventVm>> GetEventsAsync(Guid? accountId = null, string? severity = null, CancellationToken cancellationToken = default, Guid? attemptId = null)
     {
         IEnumerable<ActivityEventVm> query = _events;
 
@@ -61,6 +61,11 @@ public sealed class PreviewActivityUiPort : IActivityUiPort
         if (!string.IsNullOrWhiteSpace(severity) && !severity.Equals("all", StringComparison.OrdinalIgnoreCase))
         {
             query = query.Where(e => e.Severity.Equals(severity, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (attemptId.HasValue)
+        {
+            query = query.Where(e => e.AttemptId == attemptId.Value);
         }
 
         return Task.FromResult<IReadOnlyList<ActivityEventVm>>(query.OrderByDescending(e => e.Timestamp).ToList());

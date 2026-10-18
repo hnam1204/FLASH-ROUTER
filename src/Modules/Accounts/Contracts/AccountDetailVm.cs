@@ -30,4 +30,7 @@ public sealed record AccountDetailVm(
     string? LastObservationEvidenceSource = null,
     string? LastObservationErrorCode = null,
     Guid? LastAuthenticationAttemptId = null,
-    bool CredentialReferencePresent = false);
+    bool CredentialReferencePresent = false,
+    string? LastObservedProviderEmail = null,
+    string? LastIdentityEvidenceSource = null,
+    string? LastIdentityReasonCode = null);

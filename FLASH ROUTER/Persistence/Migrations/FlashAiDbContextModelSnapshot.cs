@@ -28,9 +28,10 @@ namespace FLASHROUTER.Persistence.Migrations
 
                     b.Property<string>("AuthenticationState")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
-                        .HasDefaultValue("NotStarted")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("NotStarted");
 
                     b.Property<string>("ConnectionStatus")
                         .IsRequired()
@@ -57,9 +58,10 @@ namespace FLASHROUTER.Persistence.Migrations
 
                     b.Property<string>("IdentityVerificationState")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
-                        .HasDefaultValue("NotChecked")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("NotChecked");
 
                     b.Property<bool>("IsArchived")
                         .HasColumnType("INTEGER");
@@ -82,6 +84,14 @@ namespace FLASHROUTER.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastCheckedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LastIdentityEvidenceSource")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastIdentityReasonCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("LastIdentityVerifiedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -94,6 +104,10 @@ namespace FLASHROUTER.Persistence.Migrations
 
                     b.Property<string>("LastObservationEvidenceSource")
                         .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastObservedProviderEmail")
+                        .HasMaxLength(254)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("LifecycleStatus")

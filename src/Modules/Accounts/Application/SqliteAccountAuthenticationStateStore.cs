@@ -42,9 +42,15 @@ public sealed class SqliteAccountAuthenticationStateStore : IAccountAuthenticati
             && account.LastIdentityVerifiedAtUtc == update.IdentityVerifiedAtUtc
             && string.Equals(account.LastObservationEvidenceSource, update.EvidenceSource, StringComparison.Ordinal)
             && string.Equals(account.LastObservationErrorCode, update.SanitizedFailureCode, StringComparison.Ordinal)
+            && string.Equals(account.LastObservedProviderEmail, update.ObservedProviderEmail, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(account.LastIdentityEvidenceSource, update.IdentityEvidenceSource, StringComparison.Ordinal)
+            && string.Equals(account.LastIdentityReasonCode, update.IdentityReasonCode, StringComparison.Ordinal)
             && update.BrowserSessionObservedAtUtc is null
             && update.AuthenticatedSessionConfirmedAtUtc is null
-            && update.IdentityVerifiedAtUtc is null)
+            && update.IdentityVerifiedAtUtc is null
+            && update.ObservedProviderEmail is null
+            && update.IdentityEvidenceSource is null
+            && update.IdentityReasonCode is null)
         {
             return;
         }
@@ -59,7 +65,10 @@ public sealed class SqliteAccountAuthenticationStateStore : IAccountAuthenticati
             update.IdentityVerifiedAtUtc,
             update.ObservedAtUtc,
             update.EvidenceSource,
-            update.SanitizedFailureCode);
+            update.SanitizedFailureCode,
+            update.ObservedProviderEmail,
+            update.IdentityEvidenceSource,
+            update.IdentityReasonCode);
         await context.SaveChangesAsync(cancellationToken);
     }
 
@@ -83,7 +92,10 @@ public sealed class SqliteAccountAuthenticationStateStore : IAccountAuthenticati
                 account.LastIdentityVerifiedAtUtc,
                 account.LastObservationAtUtc,
                 account.LastObservationEvidenceSource,
-                account.LastObservationErrorCode))
+                account.LastObservationErrorCode,
+                account.LastObservedProviderEmail,
+                account.LastIdentityEvidenceSource,
+                account.LastIdentityReasonCode))
             .SingleOrDefaultAsync(cancellationToken);
     }
 }

@@ -90,6 +90,9 @@ public sealed class AccountRecord
     public DateTimeOffset? LastObservationAtUtc { get; private set; }
     public string? LastObservationEvidenceSource { get; private set; }
     public string? LastObservationErrorCode { get; private set; }
+    public string? LastObservedProviderEmail { get; private set; }
+    public string? LastIdentityEvidenceSource { get; private set; }
+    public string? LastIdentityReasonCode { get; private set; }
     public List<AccountTagRecord> Tags { get; private set; } = [];
 
     public void UpdateProfile(
@@ -138,7 +141,10 @@ public sealed class AccountRecord
         DateTimeOffset? identityVerifiedAtUtc,
         DateTimeOffset? observedAtUtc,
         string? evidenceSource,
-        string? sanitizedFailureCode)
+        string? sanitizedFailureCode,
+        string? observedProviderEmail = null,
+        string? identityEvidenceSource = null,
+        string? identityReasonCode = null)
     {
         LastAuthenticationAttemptId = attemptId;
         LastAuthenticationAttemptAtUtc = attemptedAtUtc;
@@ -150,6 +156,9 @@ public sealed class AccountRecord
         LastObservationAtUtc = observedAtUtc ?? LastObservationAtUtc;
         LastObservationEvidenceSource = evidenceSource;
         LastObservationErrorCode = sanitizedFailureCode;
+        LastObservedProviderEmail = observedProviderEmail ?? LastObservedProviderEmail;
+        LastIdentityEvidenceSource = identityEvidenceSource ?? LastIdentityEvidenceSource;
+        LastIdentityReasonCode = identityReasonCode ?? LastIdentityReasonCode;
         UpdatedAtUtc = observedAtUtc ?? attemptedAtUtc;
         TrackingDateUtc = UpdatedAtUtc;
         TrackingDateTicksUtc = TrackingDateUtc.UtcTicks;

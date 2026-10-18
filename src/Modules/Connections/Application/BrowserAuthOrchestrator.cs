@@ -25,6 +25,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
     private readonly IAuditSink? _auditSink;
     private readonly IAccountAuthenticationStateStore? _authenticationStateStore;
     private readonly IAccountBrowserSessionRegistration? _sessionRegistration;
+    private readonly IProviderAccountVerificationService _identityVerificationService;
     private readonly TimeSpan _postLoginObservationBudget;
     private readonly TimeSpan _postLoginOperationBudget;
     private readonly ConcurrentDictionary<Guid, AttemptState> _attempts = new();
@@ -45,7 +46,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         IAccountAuthenticationStateStore? authenticationStateStore = null,
         IAccountBrowserSessionRegistration? sessionRegistration = null,
         TimeSpan? postLoginObservationBudget = null,
-        TimeSpan? postLoginOperationBudget = null)
+        TimeSpan? postLoginOperationBudget = null,
+        IProviderAccountVerificationService? identityVerificationService = null)
     {
         _profileManager = profileManager;
         _sessionFactory = sessionFactory;
@@ -58,6 +60,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         _auditSink = auditSink;
         _authenticationStateStore = authenticationStateStore;
         _sessionRegistration = sessionRegistration;
+        _identityVerificationService = identityVerificationService ?? new ProviderAccountVerificationService();
         _postLoginObservationBudget = postLoginObservationBudget ?? DefaultPostLoginObservationBudget;
         _postLoginOperationBudget = postLoginOperationBudget ?? DefaultPostLoginOperationBudget;
     }
@@ -699,6 +702,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             now,
             "AttemptStarted",
             null,
+            null,
             cancellationToken);
         LogEvent(attempt, "AttemptStarted");
         LogEvent(attempt, "BrowserProfileSelected");
@@ -1050,6 +1054,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 DateTimeOffset.UtcNow,
                 "AttemptCancelled",
                 "ATTEMPT_CANCELLED",
+                null,
                 CancellationToken.None);
             ReportAttemptProgress(
                 attempt,
@@ -1224,6 +1229,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
 
     private static bool IsTerminalState(BrowserAuthState state)
         => state is BrowserAuthState.BrowserSessionObserved
+            or BrowserAuthState.IdentityMismatch
             or BrowserAuthState.HumanActionRequired
             or BrowserAuthState.WaitingForUser
             or BrowserAuthState.ExternalProviderRequired
@@ -1278,17 +1284,40 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 _ => BrowserAuthState.Unknown
             };
 
-            var result = CreateStateResult(attempt, pageState, totpRemainingSeconds);
+            ProviderIdentityVerificationResult? identity = null;
+            if (pageState == BrowserPageState.Authenticated)
+            {
+                identity = await _identityVerificationService.VerifyAsync(
+                    new ProviderIdentityVerificationRequest(
+                        attempt.Attempt.AccountId,
+                        attempt.Attempt.AttemptId,
+                        attempt.Attempt.BrowserProfileBindingId,
+                        attempt.Attempt.ProviderId,
+                        attempt.AccountEmail,
+                        attempt.Session),
+                    cancellationToken);
+                if (identity.Status == IdentityVerificationStatus.Mismatch)
+                {
+                    attempt.State = BrowserAuthState.IdentityMismatch;
+                }
+            }
+
+            var result = CreateStateResult(attempt, pageState, totpRemainingSeconds, identity);
             await PersistAuthenticationStateAsync(
                 attempt,
                 AuthenticationStateFor(pageState),
-                IdentityStateFor(pageState),
+                IdentityStateFor(pageState, identity),
                 attempt.Attempt.CreatedAtUtc,
                 result.ObservationResult?.ObservedAtUtc ?? DateTimeOffset.UtcNow,
                 result.ObservationResult?.EvidenceSource ?? "Provider page-state observation",
                 result.ObservationResult?.SanitizedFailureCode,
+                identity,
                 cancellationToken);
             LogObservedState(attempt, snapshot, pageState);
+            if (identity is not null)
+            {
+                LogIdentityObservation(attempt, identity);
+            }
             _logger?.LogInformation(
                 "BrowserAuthAttemptState {AttemptId} {State} {Status}",
                 attempt.Attempt.AttemptId,
@@ -1313,7 +1342,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
     private static BrowserAuthResult CreateStateResult(
         AttemptState attempt,
         BrowserPageState pageState,
-        int? totpRemainingSeconds)
+        int? totpRemainingSeconds,
+        ProviderIdentityVerificationResult? identity = null)
     {
         var (status, message, action) = pageState switch
         {
@@ -1341,8 +1371,9 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 DateTimeOffset.UtcNow,
                 "Visible official-provider UI state",
                 "Official HTTPS origin observed",
-                AuthenticationObservationStatus.AuthenticatedSessionConfirmed,
-                IdentityVerificationStatus.Unknown)
+                 AuthenticationObservationStatus.AuthenticatedSessionConfirmed,
+                 identity?.Status ?? IdentityVerificationStatus.Unverified,
+                 identity?.SafeReasonCode)
             : null;
 
         var observationResult = observation is null
@@ -1352,16 +1383,26 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 attempt.Attempt.AttemptId,
                 attempt.Attempt.ProviderId,
                 AuthenticationObservationStatus.AuthenticatedSessionConfirmed,
-                IdentityVerificationStatus.Unknown,
+                 identity?.Status ?? IdentityVerificationStatus.Unverified,
                 observation.ObservedAtUtc,
                 "ChatGPT official application shell with authenticated-only navigation markers",
-                null);
+                 identity?.SafeReasonCode,
+                 identity?.ObservedProviderEmail,
+                 identity?.EvidenceSource,
+                 identity?.SafeReasonCode);
+
+        var identityMismatch = identity?.Status == IdentityVerificationStatus.Mismatch;
+        var resultState = identityMismatch ? BrowserAuthState.IdentityMismatch : attempt.State;
+        var resultStatus = identityMismatch ? "IDENTITY_MISMATCH" : status;
+        var resultMessage = identityMismatch
+            ? "Đã quan sát phiên provider nhưng danh tính khác account đang chọn; không ghi đè metadata hoặc promotion profile."
+            : message;
 
         return new BrowserAuthResult(
-            true,
-            attempt.State,
-            status,
-            message,
+            !identityMismatch,
+            resultState,
+            resultStatus,
+            resultMessage,
             attempt.Attempt.AttemptId,
             action,
             totpRemainingSeconds,
@@ -1384,9 +1425,11 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             _ => "LoginInProgress"
         };
 
-    private static string IdentityStateFor(BrowserPageState pageState)
+    private static string IdentityStateFor(
+        BrowserPageState pageState,
+        ProviderIdentityVerificationResult? identity)
         => pageState == BrowserPageState.Authenticated
-            ? IdentityVerificationStatus.Unknown.ToString()
+            ? (identity?.Status ?? IdentityVerificationStatus.Unverified).ToString()
             : IdentityVerificationStatus.NotChecked.ToString();
 
     private async Task PersistAuthenticationStateAsync(
@@ -1397,6 +1440,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         DateTimeOffset observedAtUtc,
         string evidenceSource,
         string? sanitizedFailureCode,
+        ProviderIdentityVerificationResult? identity,
         CancellationToken cancellationToken)
     {
         if (_authenticationStateStore is null || attempt.Attempt.AccountId == Guid.Empty)
@@ -1419,7 +1463,10 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 : null,
             observedAtUtc,
             evidenceSource,
-            sanitizedFailureCode);
+            sanitizedFailureCode,
+            identity?.ObservedProviderEmail,
+            identity?.EvidenceSource,
+            identity?.SafeReasonCode);
         try
         {
             await _authenticationStateStore.RecordAsync(update, cancellationToken);
@@ -1486,10 +1533,28 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             {
                 LogEvent(attempt, "AuthenticatedSessionConfirmed");
                 LogEvent(attempt, "IdentityResolutionPending");
-                LogEvent(attempt, "IdentityResolutionPartial", "IDENTITY_EVIDENCE_NOT_AVAILABLE");
-                LogEvent(attempt, "AuthenticationAttemptCompleted");
             }
         }
+    }
+
+    private void LogIdentityObservation(
+        AttemptState attempt,
+        ProviderIdentityVerificationResult identity)
+    {
+        var eventName = identity.Status switch
+        {
+            IdentityVerificationStatus.IdentityVerified => "IdentityVerified",
+            IdentityVerificationStatus.Mismatch => "IdentityMismatch",
+            _ => "IdentityUnverified"
+        };
+        LogEvent(attempt, eventName, identity.SafeReasonCode);
+        _logger?.LogInformation(
+            "BrowserIdentityObservation {AttemptId} {AccountId} {Status} {EvidenceSource} {ReasonCode}",
+            attempt.Attempt.AttemptId,
+            attempt.Attempt.AccountId,
+            identity.Status,
+            identity.EvidenceSource,
+            identity.SafeReasonCode ?? string.Empty);
     }
 
     private void LogEvent(AttemptState attempt, string eventName, string? errorCategory = null)
@@ -1631,6 +1696,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             DateTimeOffset.UtcNow,
             evidenceSource,
             status,
+            null,
             CancellationToken.None);
         LogEvent(attempt, "AttemptFailed", status);
         LogEvent(attempt, "ProfileLeaseReleased");
@@ -1881,6 +1947,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
 
             if (last.State is BrowserAuthState.HumanActionRequired
                 or BrowserAuthState.ExternalProviderRequired
+                or BrowserAuthState.IdentityMismatch
                 or BrowserAuthState.Failed
                 or BrowserAuthState.ProfileInUse
                 or BrowserAuthState.Cancelled

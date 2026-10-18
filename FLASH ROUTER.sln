@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36623.8
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FLASH ROUTER", "FLASH ROUTER\FLASH ROUTER.csproj", "{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FlashAI.ArchitectureTests", "tests\FlashAI.ArchitectureTests\FlashAI.ArchitectureTests.csproj", "{C0F95B7B-49E9-43D2-A9A9-82DE2607D953}"
@@ -27,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FlashAI.Modules.Operations"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FlashAI.Modules.Workspace", "src\Modules\Workspace\FlashAI.Modules.Workspace.csproj", "{E0AAFE6B-C1C2-441B-BC78-4C85C8CBE84B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FLASH ROUTER", "FLASH ROUTER\FLASH ROUTER.csproj", "{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -37,18 +37,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|x64.Build.0 = Debug|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|x86.Build.0 = Debug|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|x64.ActiveCfg = Release|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|x64.Build.0 = Release|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|x86.ActiveCfg = Release|Any CPU
-		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|x86.Build.0 = Release|Any CPU
 		{C0F95B7B-49E9-43D2-A9A9-82DE2607D953}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C0F95B7B-49E9-43D2-A9A9-82DE2607D953}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C0F95B7B-49E9-43D2-A9A9-82DE2607D953}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -145,6 +133,18 @@ Global
 		{E0AAFE6B-C1C2-441B-BC78-4C85C8CBE84B}.Release|x64.Build.0 = Release|Any CPU
 		{E0AAFE6B-C1C2-441B-BC78-4C85C8CBE84B}.Release|x86.ActiveCfg = Release|Any CPU
 		{E0AAFE6B-C1C2-441B-BC78-4C85C8CBE84B}.Release|x86.Build.0 = Release|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|x64.Build.0 = Debug|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Debug|x86.Build.0 = Debug|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|x64.ActiveCfg = Release|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|x64.Build.0 = Release|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|x86.ActiveCfg = Release|Any CPU
+		{33C91EA8-FFB6-4FE9-B01C-2977A82FE3B9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

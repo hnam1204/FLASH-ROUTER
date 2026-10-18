@@ -238,7 +238,7 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
                         entry.AttemptId ?? Guid.NewGuid(),
                         entry.Context.ProviderId,
                         AuthenticationObservationStatus.AuthenticatedSessionConfirmed,
-                        IdentityVerificationStatus.Unknown,
+                        IdentityVerificationStatus.Unverified,
                         DateTimeOffset.UtcNow,
                         "Official provider page-state observation",
                         null)
@@ -251,7 +251,7 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
                 var fresh = status with
                 {
                     AuthenticationState = authState,
-                    IdentityVerificationState = IdentityVerificationStatus.Unknown,
+                    IdentityVerificationState = IdentityVerificationStatus.Unverified,
                     LastSessionObservedAtUtc = observation?.ObservedAtUtc,
                     LastAuthenticatedSessionConfirmedAtUtc = observation?.ObservedAtUtc,
                     EvidenceSource = "Official provider page-state observation"

@@ -17,7 +17,8 @@ public sealed class SqliteActivityUiPort : IActivityUiPort
     public async Task<IReadOnlyList<ActivityEventVm>> GetEventsAsync(
         Guid? accountId = null,
         string? severity = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? attemptId = null)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var query = context.Set<ActivityEventRecord>().AsNoTracking().AsQueryable();
@@ -29,6 +30,11 @@ public sealed class SqliteActivityUiPort : IActivityUiPort
         if (!string.IsNullOrWhiteSpace(severity) && !severity.Equals("all", StringComparison.OrdinalIgnoreCase))
         {
             query = query.Where(item => item.Severity == severity);
+        }
+
+        if (attemptId.HasValue)
+        {
+            query = query.Where(item => item.AttemptId == attemptId.Value);
         }
 
         var events = await query

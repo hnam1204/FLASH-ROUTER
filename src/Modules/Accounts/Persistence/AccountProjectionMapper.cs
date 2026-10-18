@@ -28,7 +28,10 @@ public static class AccountProjectionMapper
         account.LastObservationAtUtc,
         account.LastObservationEvidenceSource,
         account.LastObservationErrorCode,
-        account.LastAuthenticationAttemptId);
+        account.LastAuthenticationAttemptId,
+        account.LastObservedProviderEmail,
+        account.LastIdentityEvidenceSource,
+        account.LastIdentityReasonCode);
 
     public static AccountDetailVm ToDetail(AccountRecord account) => new(
         account.Id,
@@ -59,5 +62,9 @@ public static class AccountProjectionMapper
         account.LastObservationAtUtc,
         account.LastObservationEvidenceSource,
         account.LastObservationErrorCode,
-        account.LastAuthenticationAttemptId);
+        account.LastAuthenticationAttemptId,
+        false,
+        account.LastObservedProviderEmail,
+        account.LastIdentityEvidenceSource,
+        account.LastIdentityReasonCode);
 }

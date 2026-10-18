@@ -35,6 +35,9 @@ public sealed class AccountModelContributor : IFlashAiModelContributor
             .IsRequired();
         account.Property(x => x.LastObservationEvidenceSource).HasMaxLength(200);
         account.Property(x => x.LastObservationErrorCode).HasMaxLength(120);
+        account.Property(x => x.LastObservedProviderEmail).HasMaxLength(254);
+        account.Property(x => x.LastIdentityEvidenceSource).HasMaxLength(200);
+        account.Property(x => x.LastIdentityReasonCode).HasMaxLength(120);
         account.Property(x => x.Version).IsConcurrencyToken().IsRequired();
 
         account.HasIndex(x => x.NumericId).IsUnique();
