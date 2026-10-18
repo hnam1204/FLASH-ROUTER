@@ -361,6 +361,27 @@ public interface IProviderSyncOrchestrator
         CancellationToken cancellationToken = default);
 }
 
+public sealed record ProviderSyncStateSnapshot(
+    bool Enabled,
+    DateTimeOffset? NextEligibleAtUtc,
+    DateTimeOffset? LastSuccessfulSyncAtUtc,
+    int FailureCount,
+    DateTimeOffset UpdatedAtUtc);
+
+public interface IProviderSyncStateStore
+{
+    Task<ProviderSyncStateSnapshot?> GetAsync(
+        Guid connectionId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> UpdateAsync(
+        Guid connectionId,
+        DateTimeOffset? nextEligibleAtUtc,
+        DateTimeOffset? lastSuccessfulSyncAtUtc,
+        int failureCount,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IProviderErrorMapper
 {
     ProviderOperationResult Map(

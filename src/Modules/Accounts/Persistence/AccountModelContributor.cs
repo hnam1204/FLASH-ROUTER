@@ -25,6 +25,16 @@ public sealed class AccountModelContributor : IFlashAiModelContributor
         account.Property(x => x.DataSource).HasMaxLength(40).IsRequired();
         account.Property(x => x.RecordedBy).HasMaxLength(100).IsRequired();
         account.Property(x => x.LifecycleStatus).HasConversion<string>().HasMaxLength(20).IsRequired();
+        account.Property(x => x.AuthenticationState)
+            .HasMaxLength(50)
+            .HasDefaultValue("NotStarted")
+            .IsRequired();
+        account.Property(x => x.IdentityVerificationState)
+            .HasMaxLength(50)
+            .HasDefaultValue("NotChecked")
+            .IsRequired();
+        account.Property(x => x.LastObservationEvidenceSource).HasMaxLength(200);
+        account.Property(x => x.LastObservationErrorCode).HasMaxLength(120);
         account.Property(x => x.Version).IsConcurrencyToken().IsRequired();
 
         account.HasIndex(x => x.NumericId).IsUnique();

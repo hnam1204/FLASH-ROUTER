@@ -5,18 +5,75 @@ public enum BrowserAuthState
     NotStarted,
     BrowserStarting,
     Navigating,
+    ObservingPostLogin,
     GuestLandingLoginAvailable,
     EmailRequired,
     PasswordRequired,
     MfaRequired,
     ExternalProviderRequired,
     HumanActionRequired,
+    WaitingForUser,
     BrowserSessionObserved,
+    // Kept as an alias so existing callers remain source-compatible while the
+    // durable projection can distinguish confirmed authentication explicitly.
+    AuthenticatedSessionConfirmed = BrowserSessionObserved,
     ProfileInUse,
     Failed,
     Cancelled,
     TimedOut,
     Unknown
+}
+
+public enum AuthenticationObservationStatus
+{
+    NotChecked,
+    Checking,
+    BrowserSessionObserved,
+    AuthenticatedSessionConfirmed,
+    LoginRequired,
+    SessionExpired,
+    Failed,
+    Unknown
+}
+
+public enum IdentityVerificationStatus
+{
+    NotChecked,
+    Checking,
+    IdentityObserved,
+    IdentityVerified,
+    PartiallyResolved,
+    Unsupported,
+    Unauthorized,
+    Failed,
+    Unknown
+}
+
+public enum ProviderMetadataStatus
+{
+    NotChecked,
+    Pending,
+    Available,
+    PartiallyAvailable,
+    Unsupported,
+    Unauthorized,
+    Unavailable,
+    Failed,
+    Stale
+}
+
+public enum UsageObservationStatus
+{
+    NotScheduled,
+    Scheduled,
+    Checking,
+    Available,
+    Unsupported,
+    Unauthorized,
+    RateLimited,
+    Unavailable,
+    Failed,
+    Stale
 }
 
 public enum BrowserAuthCredentialReadinessKind
@@ -30,7 +87,13 @@ public enum BrowserAuthCredentialReadinessKind
     CredentialProviderMismatch,
     CredentialRotationRequired,
     CredentialReady,
-    CredentialReadFailure
+    CredentialReadFailure,
+    ProtectionContextMismatch,
+    ProtectionKeyUnavailable,
+    LegacyUnlockRequired,
+    CredentialCorrupted,
+    UnauthorizedAccess,
+    VaultStorageUnavailable
 }
 
 public enum BrowserAuthAction
@@ -186,7 +249,20 @@ public sealed record BrowserSessionObservation(
     string ProviderId,
     DateTimeOffset ObservedAtUtc,
     string ObservationMethod,
-    string SafeNavigationStatus);
+    string SafeNavigationStatus,
+    AuthenticationObservationStatus AuthenticationStatus = AuthenticationObservationStatus.BrowserSessionObserved,
+    IdentityVerificationStatus IdentityStatus = IdentityVerificationStatus.Unknown,
+    string? SanitizedFailureCode = null);
+
+public sealed record AuthenticationObservationResult(
+    Guid AccountId,
+    Guid AttemptId,
+    string ProviderId,
+    AuthenticationObservationStatus Status,
+    IdentityVerificationStatus IdentityStatus,
+    DateTimeOffset ObservedAtUtc,
+    string EvidenceSource,
+    string? SanitizedFailureCode);
 
 public sealed record BrowserAuthResult(
     bool IsSuccess,
@@ -198,7 +274,10 @@ public sealed record BrowserAuthResult(
     int? TotpRemainingSeconds = null,
     BrowserSessionObservation? Observation = null,
     string? MaskedAccountEmail = null,
-    BrowserAuthTimingSnapshot? Timing = null)
+    BrowserAuthTimingSnapshot? Timing = null,
+    AuthenticationObservationResult? ObservationResult = null,
+    BrowserProfileSessionContext? CandidateProfile = null,
+    string? CancellationReason = null)
 {
     public static BrowserAuthResult Failure(
         BrowserAuthState state,
@@ -280,6 +359,11 @@ public interface IBrowserAuthOrchestrator
         IProgress<BrowserAuthProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
+    Task<BrowserAuthResult> ResumeAfterVaultUnlockAsync(
+        Guid attemptId,
+        IProgress<BrowserAuthProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
     Task<BrowserAuthResult> StartAsync(
         Guid accountId,
         CancellationToken cancellationToken = default);
@@ -297,6 +381,7 @@ public interface IBrowserAuthOrchestrator
         Guid attemptId,
         BrowserAuthAction action,
         bool confirmed,
+        IProgress<BrowserAuthProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
     Task<BrowserAuthResult> CancelAsync(

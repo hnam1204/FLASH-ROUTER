@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using FlashAI.Foundation.Contracts;
 using FlashAI.Foundation.Security;
 using FlashAI.Modules.Connections.Contracts;
 using FlashAI.Modules.Connections.Domain;
@@ -11,15 +12,21 @@ namespace FlashAI.Modules.Connections.Application;
 public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemeralBrowserAuthOrchestrator, IAsyncDisposable
 {
     private static readonly TimeSpan AttemptLifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan DefaultPostLoginObservationBudget = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultPostLoginOperationBudget = TimeSpan.FromSeconds(4);
     private readonly IBrowserProfileManager _profileManager;
     private readonly IBrowserAuthenticationSessionFactory _sessionFactory;
     private readonly IBrowserPageStateDetector _stateDetector;
     private readonly BrowserAuthCredentialReader _credentialReader;
     private readonly ILocalTotpCodeGenerator _totpGenerator;
-    private readonly IVaultAccessState? _vaultAccess;
     private readonly Func<Uri?, bool> _isAllowedOrigin;
     private readonly IEphemeralBrowserProfileFactory? _ephemeralProfileFactory;
     private readonly ILogger<BrowserAuthOrchestrator>? _logger;
+    private readonly IAuditSink? _auditSink;
+    private readonly IAccountAuthenticationStateStore? _authenticationStateStore;
+    private readonly IAccountBrowserSessionRegistration? _sessionRegistration;
+    private readonly TimeSpan _postLoginObservationBudget;
+    private readonly TimeSpan _postLoginOperationBudget;
     private readonly ConcurrentDictionary<Guid, AttemptState> _attempts = new();
     private readonly ConcurrentDictionary<Guid, byte> _autoLoginAccounts = new();
     private int _ephemeralAttemptActive;
@@ -33,17 +40,26 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         Func<Uri?, bool>? isAllowedOrigin = null,
         ILogger<BrowserAuthOrchestrator>? logger = null,
         IVaultAccessState? vaultAccess = null,
-        IEphemeralBrowserProfileFactory? ephemeralProfileFactory = null)
+        IEphemeralBrowserProfileFactory? ephemeralProfileFactory = null,
+        IAuditSink? auditSink = null,
+        IAccountAuthenticationStateStore? authenticationStateStore = null,
+        IAccountBrowserSessionRegistration? sessionRegistration = null,
+        TimeSpan? postLoginObservationBudget = null,
+        TimeSpan? postLoginOperationBudget = null)
     {
         _profileManager = profileManager;
         _sessionFactory = sessionFactory;
         _stateDetector = stateDetector;
         _credentialReader = credentialReader;
         _totpGenerator = totpGenerator;
-        _vaultAccess = vaultAccess;
         _isAllowedOrigin = isAllowedOrigin ?? BrowserOriginPolicy.IsAllowed;
         _logger = logger;
         _ephemeralProfileFactory = ephemeralProfileFactory;
+        _auditSink = auditSink;
+        _authenticationStateStore = authenticationStateStore;
+        _sessionRegistration = sessionRegistration;
+        _postLoginObservationBudget = postLoginObservationBudget ?? DefaultPostLoginObservationBudget;
+        _postLoginOperationBudget = postLoginOperationBudget ?? DefaultPostLoginOperationBudget;
     }
 
     public async Task<BrowserAuthPreflight> GetAutoLoginPreflightAsync(
@@ -59,7 +75,9 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         var profileStatus = historicalLaunchFailure
             ? "LaunchFailed (lịch sử; có thể thử lại an toàn)"
             : binding?.State ?? "Sẵn sàng tạo profile được quản lý riêng cho tài khoản";
-        var vaultUnlocked = _vaultAccess?.IsUnlocked ?? true;
+        // Readiness now reflects automatic access to the protected credential;
+        // the scoped authenticator unlock flag is not part of this workflow.
+        var vaultUnlocked = credentialReadiness.IsReady;
         var isReady = credentialReadiness.IsReady
             && vaultUnlocked
             && BrowserOriginPolicy.IsOfficialChatGptStart(BrowserOriginPolicy.ChatGptUri);
@@ -75,9 +93,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
 
         _logger?.LogInformation(
             "BrowserAuthEvent {EventName} {AccountId} {State} {ErrorCategory}",
-            credentialReadiness.Kind == BrowserAuthCredentialReadinessKind.VaultLocked
-                ? "VaultLockedDetected"
-                : "CredentialReadinessChanged",
+            "CredentialReadinessChanged",
             accountId,
             credentialReadiness.Kind,
             credentialReadiness.Status);
@@ -147,6 +163,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 return attempt is null ? result : WithTiming(result, attempt);
             }
 
+            attempt.Progress = progress;
+
             attempt.Consent = new AutoLoginAttemptConsent(
                 attempt.Attempt.AttemptId,
                 attempt.Attempt.AccountId,
@@ -196,8 +214,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                     if (result.State == BrowserAuthState.BrowserSessionObserved)
                     {
                         attempt.Consent.Consume();
-                        LogEvent(attempt, "AutoLoginCompleted");
                         ReportAttemptProgress(attempt, progress, "CheckingAuthenticatedSession", result.State, "Phiên đăng nhập ChatGPT đã được xác nhận thành công.");
+                        LogEvent(attempt, "AutoLoginCompleted");
                         return WithTiming(result, attempt);
                     }
 
@@ -244,6 +262,82 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         }
     }
 
+    public async Task<BrowserAuthResult> ResumeAfterVaultUnlockAsync(
+        Guid attemptId,
+        IProgress<BrowserAuthProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_attempts.TryGetValue(attemptId, out var attempt))
+        {
+            return BrowserAuthResult.Failure(BrowserAuthState.Failed, "ATTEMPT_NOT_FOUND", "Phiên hỗ trợ đăng nhập không còn tồn tại.", attemptId);
+        }
+
+        if (attempt.Consent is null || !attempt.Consent.IsActive(DateTimeOffset.UtcNow))
+        {
+            return WithTiming(BrowserAuthResult.Failure(
+                BrowserAuthState.TimedOut,
+                "AUTO_LOGIN_CONSENT_EXPIRED",
+                "Quyền Auto Login đã hết hạn; hãy bắt đầu một attempt mới.",
+                attemptId), attempt);
+        }
+
+        var result = await RefreshAsync(attemptId, cancellationToken);
+        for (var step = 0; step < 8; step++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (result.State == BrowserAuthState.BrowserSessionObserved)
+            {
+                attempt.Consent.Consume();
+                LogEvent(attempt, "AutoLoginCompleted");
+                return WithTiming(result, attempt);
+            }
+
+            if (result.State is BrowserAuthState.HumanActionRequired
+                or BrowserAuthState.ExternalProviderRequired
+                or BrowserAuthState.Unknown
+                or BrowserAuthState.Failed
+                or BrowserAuthState.ProfileInUse
+                or BrowserAuthState.TimedOut
+                or BrowserAuthState.Cancelled)
+            {
+                attempt.Consent.Revoke();
+                return WithTiming(result, attempt);
+            }
+
+            result = result.State switch
+            {
+                BrowserAuthState.GuestLandingLoginAvailable => await RunAutoLoginEntryAsync(attempt, progress, cancellationToken),
+                BrowserAuthState.EmailRequired => await RunAutoCredentialStepAsync(attempt, BrowserAuthAction.FillEmail, "FillingEmail", "Đang tiếp tục bước email.", progress, cancellationToken),
+                BrowserAuthState.PasswordRequired => await RunAutoCredentialStepAsync(attempt, BrowserAuthAction.FillPassword, "FillingPassword", "Đang tiếp tục bước mật khẩu từ Vault.", progress, cancellationToken),
+                BrowserAuthState.MfaRequired => await RunAutoCredentialStepAsync(attempt, BrowserAuthAction.FillTotp, "FillingTotp", "Đang tiếp tục bước TOTP cục bộ.", progress, cancellationToken),
+                _ => BrowserAuthResult.Failure(attempt.State, "AUTO_LOGIN_STEP_UNSUPPORTED", "Bước đăng nhập hiện tại không được hỗ trợ tự động.", attempt.Attempt.AttemptId)
+            };
+
+            if (!result.IsSuccess || IsTerminalState(result.State))
+            {
+                if (result.State == BrowserAuthState.BrowserSessionObserved)
+                {
+                    attempt.Consent.Consume();
+                    LogEvent(attempt, "AutoLoginCompleted");
+                    return WithTiming(result, attempt);
+                }
+
+                attempt.Consent.Revoke();
+                ReportAttemptProgress(attempt, progress, "WaitingForUser", result.State, result.Message);
+                return WithTiming(result, attempt);
+            }
+
+            ReportAttemptProgress(attempt, progress, "CheckingAuthenticatedSession", result.State, "Đang kiểm tra trạng thái phiên sau khi tiếp tục attempt hiện tại.");
+        }
+
+        attempt.Consent.Revoke();
+        return WithTiming(BrowserAuthResult.Failure(
+            BrowserAuthState.HumanActionRequired,
+            "AUTO_LOGIN_STEP_LIMIT",
+            "Auto Login đã dừng sau số bước an toàn cho phép; hãy tiếp quản trong Chrome.",
+            attempt.Attempt.AttemptId), attempt);
+    }
+
     public async Task<BrowserAuthResult> AutoLoginAsync(
         EphemeralBrowserAuthRequest request,
         IProgress<BrowserAuthProgress>? progress = null,
@@ -288,7 +382,14 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 return BrowserAuthResult.Failure(BrowserAuthState.Failed, prepared.Status, prepared.Message);
             }
 
-            attempt = CreateEphemeralAttempt(credential, prepared);
+            var candidateProfile = prepared.Context with
+            {
+                AccountId = request.AccountId,
+                Binding = prepared.Context.Binding with { AccountId = request.AccountId }
+            };
+            attempt = CreateEphemeralAttempt(credential, prepared, candidateProfile);
+            attempt.Attempt = attempt.Attempt with { AccountId = request.AccountId };
+            attempt.Progress = progress;
             _attempts[attempt.Attempt.AttemptId] = attempt;
             LogEvent(attempt, "EphemeralAttemptStarted");
             ReportProgress(progress, "BrowserStarted", BrowserAuthState.BrowserStarting, "Chrome profile one-shot đã được tạo.", attempt.Attempt.AttemptId);
@@ -298,7 +399,17 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             {
                 attempt.State = BrowserAuthState.Navigating;
                 LogEvent(attempt, "OfficialNavigationStarted");
-                attempt.Session = await _sessionFactory.OpenAsync(prepared.Context, BrowserOriginPolicy.ChatGptUri, cancellationToken);
+                attempt.Session = await _sessionFactory.OpenAsync(candidateProfile, BrowserOriginPolicy.ChatGptUri, cancellationToken);
+                if (_sessionRegistration is not null && request.AccountId != Guid.Empty)
+                {
+                    await _sessionRegistration.RegisterManagedSessionAsync(
+                        request.AccountId,
+                        attempt.Attempt.AttemptId,
+                        candidateProfile,
+                        attempt.Session,
+                        cancellationToken);
+                    attempt.ManagedSessionRegistered = true;
+                }
                 if (attempt.Session is IBrowserAuthenticationSessionDiagnostics diagnostics)
                 {
                     attempt.Timing.Merge(diagnostics.Timing);
@@ -330,6 +441,11 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             if (result is null || !result.IsSuccess)
             {
                 return result ?? BrowserAuthResult.Failure(BrowserAuthState.Failed, "BROWSER_START_FAILED", "Không thể khởi chạy phiên Chrome one-shot.");
+            }
+
+            if (result.State == BrowserAuthState.BrowserSessionObserved)
+            {
+                return await FinalizeEphemeralSuccessAsync(result, request, attempt, cancellationToken);
             }
 
             attempt.Consent = new AutoLoginAttemptConsent(
@@ -381,9 +497,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                     if (result.State == BrowserAuthState.BrowserSessionObserved)
                     {
                         attempt.Consent.Consume();
-                        LogEvent(attempt, "AutoLoginCompleted");
                         ReportAttemptProgress(attempt, progress, "CheckingAuthenticatedSession", result.State, "Phiên đăng nhập ChatGPT đã được xác nhận thành công.");
-                        return WithTiming(result, attempt);
+                        return await FinalizeEphemeralSuccessAsync(result, request, attempt, cancellationToken);
                     }
 
                     attempt.Consent.Revoke();
@@ -426,8 +541,14 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             if (attempt is not null)
             {
                 LogTiming(attempt);
-                if (request.SessionMode == BrowserSessionMode.Temporary || result?.IsSuccess == false)
+                var preserveManagedSession = request.SessionMode == BrowserSessionMode.KeepBrowserSession
+                    && result?.State == BrowserAuthState.BrowserSessionObserved
+                    && (request.AccountId == Guid.Empty
+                        || attempt.CandidatePromotionCommitted
+                        || attempt.CandidateRetained);
+                if (!preserveManagedSession)
                 {
+                    await DisposeAttemptSessionAsync(attempt);
                     if (attempt.ProfileCleanup is not null)
                     {
                         await attempt.ProfileCleanup.DisposeAsync();
@@ -440,7 +561,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
 
     private static AttemptState CreateEphemeralAttempt(
         EphemeralCredentialContext credential,
-        EphemeralBrowserProfilePreparationResult prepared)
+        EphemeralBrowserProfilePreparationResult prepared,
+        BrowserProfileSessionContext candidateProfile)
     {
         var now = DateTimeOffset.UtcNow;
         return new AttemptState(
@@ -448,17 +570,74 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 Guid.NewGuid(),
                 Guid.Empty,
                 "openai-chatgpt",
-                prepared.Context!.BindingId,
+                candidateProfile.BindingId,
                 now,
                 now.Add(AttemptLifetime),
                 BrowserAuthState.BrowserStarting),
             credential.Account!,
-            prepared.Context,
+            candidateProfile,
             new BrowserAuthTimingRecorder())
         {
             EphemeralCredential = credential,
-            ProfileCleanup = prepared
+            ProfileCleanup = prepared,
+            CandidateProfile = candidateProfile
         };
+    }
+
+    private async Task<BrowserAuthResult> FinalizeEphemeralSuccessAsync(
+        BrowserAuthResult result,
+        EphemeralBrowserAuthRequest request,
+        AttemptState attempt,
+        CancellationToken cancellationToken)
+    {
+        if (request.AccountId != Guid.Empty)
+        {
+            if (result.ObservationResult?.IdentityStatus != IdentityVerificationStatus.IdentityVerified)
+            {
+                attempt.CandidateRetained = true;
+                LogEvent(attempt, "CandidateReadyForPromotion", "IDENTITY_EVIDENCE_NOT_AVAILABLE");
+                return WithTiming(result with
+                {
+                    Message = "Đã xác nhận phiên trên hồ sơ mới. Hồ sơ mới được giữ làm ứng viên vì provider chưa cung cấp bằng chứng danh tính đủ mạnh để thay thế hồ sơ cũ."
+                }, attempt);
+            }
+
+            if (_profileManager is not IBrowserProfilePromotionService promotionService
+                || attempt.CandidateProfile is null)
+            {
+                LogEvent(attempt, "CandidatePromotionFailed", "PROFILE_PROMOTION_UNAVAILABLE");
+                return WithTiming(
+                    BrowserAuthResult.Failure(
+                        BrowserAuthState.Failed,
+                        "PROFILE_PROMOTION_UNAVAILABLE",
+                        "Đã xác nhận phiên trên hồ sơ mới nhưng chưa thể ghi nhận hồ sơ chính một cách an toàn.",
+                        attempt.Attempt.AttemptId),
+                    attempt);
+            }
+
+            LogEvent(attempt, "CandidateReadyForPromotion");
+            var promotion = await promotionService.PromoteCandidateAsync(
+                request.AccountId,
+                attempt.CandidateProfile,
+                cancellationToken);
+            if (!promotion.IsSuccess)
+            {
+                LogEvent(attempt, "CandidatePromotionFailed", promotion.Status);
+                return WithTiming(
+                    BrowserAuthResult.Failure(
+                        BrowserAuthState.Failed,
+                        promotion.Status,
+                        promotion.Message,
+                        attempt.Attempt.AttemptId),
+                    attempt);
+            }
+
+            attempt.CandidatePromotionCommitted = true;
+            LogEvent(attempt, "CandidatePromotionCommitted");
+        }
+
+        LogEvent(attempt, "AutoLoginCompleted");
+        return WithTiming(result, attempt);
     }
 
     public async Task<BrowserAuthResult> StartAsync(
@@ -512,6 +691,15 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             timing);
 
         _attempts[attemptId] = attempt;
+        await PersistAuthenticationStateAsync(
+            attempt,
+            BrowserAuthState.BrowserStarting.ToString(),
+            IdentityVerificationStatus.NotChecked.ToString(),
+            now,
+            now,
+            "AttemptStarted",
+            null,
+            cancellationToken);
         LogEvent(attempt, "AttemptStarted");
         LogEvent(attempt, "BrowserProfileSelected");
         LogEvent(attempt, "BrowserProfileLeaseRequested");
@@ -520,6 +708,16 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             attempt.State = BrowserAuthState.Navigating;
             LogEvent(attempt, "OfficialNavigationStarted");
             attempt.Session = await _sessionFactory.OpenAsync(prepared.Context, BrowserOriginPolicy.ChatGptUri, cancellationToken);
+            if (_sessionRegistration is not null)
+            {
+            await _sessionRegistration.RegisterManagedSessionAsync(
+                    attempt.Attempt.AccountId,
+                    attempt.Attempt.AttemptId,
+                    prepared.Context,
+                    attempt.Session,
+                    cancellationToken);
+                attempt.ManagedSessionRegistered = true;
+            }
             if (attempt.Session is IBrowserAuthenticationSessionDiagnostics diagnostics)
             {
                 attempt.Timing.Merge(diagnostics.Timing);
@@ -647,11 +845,18 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         Guid attemptId,
         BrowserAuthAction action,
         bool confirmed,
+        IProgress<BrowserAuthProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (!_attempts.TryGetValue(attemptId, out var attempt))
         {
             return BrowserAuthResult.Failure(BrowserAuthState.Failed, "ATTEMPT_NOT_FOUND", "Phiên hỗ trợ đăng nhập không còn tồn tại.", attemptId);
+        }
+
+        // Keep the latest callback so terminal cleanup can report through the same stream.
+        if (progress is not null)
+        {
+            attempt.Progress = progress;
         }
 
         Stopwatch? stepTimer = null;
@@ -732,11 +937,6 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 var credentialResult = await ReadCredentialAsync(attempt, cancellationToken);
                 if (!credentialResult.IsSuccess || credentialResult.Credential is null)
                 {
-                    if (credentialResult.Status == "VAULT_LOCKED")
-                    {
-                        LogEvent(attempt, "VaultUnlockRequired", credentialResult.Status);
-                    }
-
                     return WithTiming(BrowserAuthResult.Failure(attempt.State, credentialResult.Status, credentialResult.Message, attempt.Attempt.AttemptId), attempt);
                 }
 
@@ -794,8 +994,14 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                     await attempt.Session.ActivateTotpContinueAsync(cancellationToken);
                     attempt.TotpContinueActivated = true;
                     LogEvent(attempt, "TotpSubmitted");
+                    ReportAttemptProgress(
+                        attempt,
+                        progress ?? attempt.Progress,
+                        "SubmittingTotp",
+                        BrowserAuthState.MfaRequired,
+                        "Đã gửi mã xác thực hai bước.");
                     var remaining = 30 - (int)(now.ToUnixTimeSeconds() % 30);
-                    return await RefreshUntilCredentialTransitionAsync(attempt, cancellationToken, remaining);
+                    return await ObservePostLoginAsync(attempt, progress ?? attempt.Progress, remaining, cancellationToken);
                 }
             }
         }
@@ -828,11 +1034,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             attempt.State = BrowserAuthState.Cancelled;
             attempt.Consent?.Revoke();
             _autoLoginAccounts.TryRemove(attempt.Attempt.AccountId, out _);
-            if (attempt.Session is not null)
-            {
-                await attempt.Session.DisposeAsync();
-                attempt.Session = null;
-            }
+            await DisposeAttemptSessionAsync(attempt);
 
             if (attempt.ProfileCleanup is not null)
             {
@@ -840,6 +1042,21 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 attempt.ProfileCleanup = null;
             }
 
+            await PersistAuthenticationStateAsync(
+                attempt,
+                BrowserAuthState.Cancelled.ToString(),
+                IdentityVerificationStatus.NotChecked.ToString(),
+                attempt.Attempt.CreatedAtUtc,
+                DateTimeOffset.UtcNow,
+                "AttemptCancelled",
+                "ATTEMPT_CANCELLED",
+                CancellationToken.None);
+            ReportAttemptProgress(
+                attempt,
+                attempt.Progress,
+                "Cancelled",
+                BrowserAuthState.Cancelled,
+                "Quá trình đăng nhập đã bị hủy.");
             LogEvent(attempt, "AttemptCancelled");
             LogEvent(attempt, "ProfileLeaseReleased");
 
@@ -879,7 +1096,12 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             _ => BrowserAuthState.Unknown
         };
         ReportProgress(progress, stage, state, message, attempt.Attempt.AttemptId);
-        return await ConfirmAndFillAsync(attempt.Attempt.AttemptId, action, confirmed: true, cancellationToken: cancellationToken);
+        return await ConfirmAndFillAsync(
+            attempt.Attempt.AttemptId,
+            action,
+            confirmed: true,
+            progress: progress,
+            cancellationToken: cancellationToken);
     }
 
     private static BrowserAuthResult? ValidateAutoConsent(
@@ -960,6 +1182,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         BrowserAuthState state,
         string message)
     {
+        progress ??= attempt?.Progress;
         if (attempt is not null)
         {
             if (attempt.TerminalReported)
@@ -990,6 +1213,8 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             "FillingEmail" => "EMAIL",
             "FillingPassword" => "PASSWORD",
             "FillingTotp" => "TOTP",
+            "SubmittingTotp" => "TOTP_SUBMITTED",
+            "ObservingPostLogin" => "SESSION_OBSERVATION",
             "WaitingForUser" => "WAITING_FOR_USER",
             "Authenticated" => "AUTHENTICATED",
             "CheckingExistingSession" or "CheckingAuthenticatedSession" => "SESSION_OBSERVATION",
@@ -1000,6 +1225,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
     private static bool IsTerminalState(BrowserAuthState state)
         => state is BrowserAuthState.BrowserSessionObserved
             or BrowserAuthState.HumanActionRequired
+            or BrowserAuthState.WaitingForUser
             or BrowserAuthState.ExternalProviderRequired
             or BrowserAuthState.Failed
             or BrowserAuthState.ProfileInUse
@@ -1053,6 +1279,15 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             };
 
             var result = CreateStateResult(attempt, pageState, totpRemainingSeconds);
+            await PersistAuthenticationStateAsync(
+                attempt,
+                AuthenticationStateFor(pageState),
+                IdentityStateFor(pageState),
+                attempt.Attempt.CreatedAtUtc,
+                result.ObservationResult?.ObservedAtUtc ?? DateTimeOffset.UtcNow,
+                result.ObservationResult?.EvidenceSource ?? "Provider page-state observation",
+                result.ObservationResult?.SanitizedFailureCode,
+                cancellationToken);
             LogObservedState(attempt, snapshot, pageState);
             _logger?.LogInformation(
                 "BrowserAuthAttemptState {AttemptId} {State} {Status}",
@@ -1105,8 +1340,22 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 attempt.Attempt.ProviderId,
                 DateTimeOffset.UtcNow,
                 "Visible official-provider UI state",
-                "Official HTTPS origin observed")
+                "Official HTTPS origin observed",
+                AuthenticationObservationStatus.AuthenticatedSessionConfirmed,
+                IdentityVerificationStatus.Unknown)
             : null;
+
+        var observationResult = observation is null
+            ? null
+            : new AuthenticationObservationResult(
+                attempt.Attempt.AccountId,
+                attempt.Attempt.AttemptId,
+                attempt.Attempt.ProviderId,
+                AuthenticationObservationStatus.AuthenticatedSessionConfirmed,
+                IdentityVerificationStatus.Unknown,
+                observation.ObservedAtUtc,
+                "ChatGPT official application shell with authenticated-only navigation markers",
+                null);
 
         return new BrowserAuthResult(
             true,
@@ -1118,7 +1367,71 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             totpRemainingSeconds,
             observation,
             MaskAccountEmail(attempt.AccountEmail),
-            attempt.Timing.Snapshot());
+            attempt.Timing.Snapshot(),
+            observationResult);
+    }
+
+    private static string AuthenticationStateFor(BrowserPageState pageState)
+        => pageState switch
+        {
+            BrowserPageState.Authenticated => "AuthenticatedSessionConfirmed",
+            BrowserPageState.MfaRequired => "MfaRequired",
+            BrowserPageState.InvalidCredentials => "InvalidCredentials",
+            BrowserPageState.Unknown => "Unknown",
+            BrowserPageState.Captcha or BrowserPageState.Passkey or BrowserPageState.RecoveryCode
+                or BrowserPageState.SmsOrEmailCode or BrowserPageState.RateLimited
+                or BrowserPageState.ExternalProviderRequired => "WaitingForUser",
+            _ => "LoginInProgress"
+        };
+
+    private static string IdentityStateFor(BrowserPageState pageState)
+        => pageState == BrowserPageState.Authenticated
+            ? IdentityVerificationStatus.Unknown.ToString()
+            : IdentityVerificationStatus.NotChecked.ToString();
+
+    private async Task PersistAuthenticationStateAsync(
+        AttemptState attempt,
+        string authenticationState,
+        string identityState,
+        DateTimeOffset attemptedAtUtc,
+        DateTimeOffset observedAtUtc,
+        string evidenceSource,
+        string? sanitizedFailureCode,
+        CancellationToken cancellationToken)
+    {
+        if (_authenticationStateStore is null || attempt.Attempt.AccountId == Guid.Empty)
+        {
+            return;
+        }
+
+        var isConfirmed = string.Equals(authenticationState, "AuthenticatedSessionConfirmed", StringComparison.Ordinal);
+        var update = new AccountAuthenticationStateUpdate(
+            attempt.Attempt.AccountId,
+            attempt.Attempt.AttemptId,
+            attempt.Attempt.ProviderId,
+            authenticationState,
+            identityState,
+            attemptedAtUtc,
+            isConfirmed ? observedAtUtc : null,
+            isConfirmed ? observedAtUtc : null,
+            string.Equals(identityState, IdentityVerificationStatus.IdentityVerified.ToString(), StringComparison.Ordinal)
+                ? observedAtUtc
+                : null,
+            observedAtUtc,
+            evidenceSource,
+            sanitizedFailureCode);
+        try
+        {
+            await _authenticationStateStore.RecordAsync(update, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not persist browser authentication projection for {AccountId}.", attempt.Attempt.AccountId);
+        }
     }
 
     private static BrowserAuthResult RepeatedFillBlocked(AttemptState attempt)
@@ -1159,7 +1472,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             BrowserPageState.EmailRequired when snapshot.IsEmailModal => "EmailModalDetected",
             BrowserPageState.PasswordRequired => "PasswordStepDetected",
             BrowserPageState.MfaRequired => "MfaStepDetected",
-            BrowserPageState.Authenticated => "AuthenticatedUiObserved",
+            BrowserPageState.Authenticated => "BrowserSessionObserved",
             BrowserPageState.Captcha or BrowserPageState.Passkey or BrowserPageState.RecoveryCode
                 or BrowserPageState.SmsOrEmailCode or BrowserPageState.RateLimited or BrowserPageState.ExternalProviderRequired or BrowserPageState.InvalidCredentials
                 => "HumanTakeoverRequired",
@@ -1169,11 +1482,19 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         if (eventName is not null)
         {
             LogEvent(attempt, eventName);
+            if (pageState == BrowserPageState.Authenticated)
+            {
+                LogEvent(attempt, "AuthenticatedSessionConfirmed");
+                LogEvent(attempt, "IdentityResolutionPending");
+                LogEvent(attempt, "IdentityResolutionPartial", "IDENTITY_EVIDENCE_NOT_AVAILABLE");
+                LogEvent(attempt, "AuthenticationAttemptCompleted");
+            }
         }
     }
 
     private void LogEvent(AttemptState attempt, string eventName, string? errorCategory = null)
-        => _logger?.LogInformation(
+    {
+        _logger?.LogInformation(
             "BrowserAuthEvent {EventName} {AttemptId} {AccountId} {BrowserProfileBindingId} {State} {ErrorCategory}",
             eventName,
             attempt.Attempt.AttemptId,
@@ -1182,8 +1503,71 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             attempt.State,
             errorCategory ?? string.Empty);
 
+        if (_auditSink is null)
+        {
+            return;
+        }
+
+        var severity = eventName.Contains("Failed", StringComparison.OrdinalIgnoreCase)
+            || eventName.Contains("Required", StringComparison.OrdinalIgnoreCase)
+            ? "Warning"
+            : eventName.Contains("Completed", StringComparison.OrdinalIgnoreCase)
+                ? "Success"
+                : "Info";
+        _ = PersistAuditAsync(
+            attempt.Attempt.AccountId,
+            eventName,
+            $"Browser authentication event: {eventName}.",
+            severity,
+            errorCategory,
+            attempt.Attempt.AttemptId.ToString("N"),
+            attempt.Attempt.AttemptId,
+            attempt.Attempt.ProviderId,
+            "BrowserAuth",
+            severity.Equals("Success", StringComparison.OrdinalIgnoreCase) ? "confirmed" : "observed",
+            errorCategory);
+    }
+
+    private async Task PersistAuditAsync(
+        Guid accountId,
+        string eventType,
+        string summary,
+        string severity,
+        string? details,
+        string correlationId,
+        Guid? attemptId,
+        string providerId,
+        string source,
+        string outcome,
+        string? errorCode)
+    {
+        try
+        {
+            await _auditSink!.WriteAsync(
+                accountId,
+                eventType,
+                summary,
+                severity,
+                details,
+                correlationId,
+                attemptId,
+                providerId,
+                source,
+                outcome,
+                errorCode);
+        }
+        catch
+        {
+            // Audit failure must not change browser authentication outcome.
+        }
+    }
+
     private static BrowserAuthResult WithTiming(BrowserAuthResult result, AttemptState attempt)
-        => result with { Timing = attempt.Timing.Snapshot() };
+        => result with
+        {
+            Timing = attempt.Timing.Snapshot(),
+            CandidateProfile = attempt.CandidateProfile
+        };
 
     private void LogTiming(AttemptState attempt)
     {
@@ -1221,17 +1605,17 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         return email[..visibleCharacters] + "***" + email[separator..];
     }
 
-    private async Task<BrowserAuthResult> TimeoutAsync(AttemptState attempt)
+    private async Task<BrowserAuthResult> TimeoutAsync(
+        AttemptState attempt,
+        string status = "ATTEMPT_TIMED_OUT",
+        string? message = null,
+        string evidenceSource = "AttemptTimeout")
     {
         attempt.State = BrowserAuthState.TimedOut;
         attempt.Consent?.Revoke();
         _autoLoginAccounts.TryRemove(attempt.Attempt.AccountId, out _);
         _attempts.TryRemove(attempt.Attempt.AttemptId, out _);
-        if (attempt.Session is not null)
-        {
-            await attempt.Session.DisposeAsync();
-            attempt.Session = null;
-        }
+        await DisposeAttemptSessionAsync(attempt);
 
         if (attempt.ProfileCleanup is not null)
         {
@@ -1239,17 +1623,27 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             attempt.ProfileCleanup = null;
         }
 
-        LogEvent(attempt, "AttemptFailed", "ATTEMPT_TIMED_OUT");
+        await PersistAuthenticationStateAsync(
+            attempt,
+            BrowserAuthState.TimedOut.ToString(),
+            IdentityVerificationStatus.NotChecked.ToString(),
+            attempt.Attempt.CreatedAtUtc,
+            DateTimeOffset.UtcNow,
+            evidenceSource,
+            status,
+            CancellationToken.None);
+        LogEvent(attempt, "AttemptFailed", status);
         LogEvent(attempt, "ProfileLeaseReleased");
         LogTiming(attempt);
 
-        return new BrowserAuthResult(
+        var result = new BrowserAuthResult(
             false,
             BrowserAuthState.TimedOut,
-            "ATTEMPT_TIMED_OUT",
-            "Phiên hỗ trợ đăng nhập đã hết thời gian. Hãy mở lại từ tài khoản đang chọn.",
-            attempt.Attempt.AttemptId,
-            Timing: attempt.Timing.Snapshot());
+            status,
+            message ?? "Phiên hỗ trợ đăng nhập đã hết thời gian. Hãy mở lại từ tài khoản đang chọn.",
+            attempt.Attempt.AttemptId);
+        ReportAttemptProgress(attempt, attempt.Progress, "TimedOut", result.State, result.Message);
+        return WithTiming(result, attempt);
     }
 
     private async Task RecordFailedLaunchAsync(Guid bindingId)
@@ -1264,8 +1658,30 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         }
     }
 
-    private static async Task DisposeAttemptSessionAsync(AttemptState attempt)
+    private async Task DisposeAttemptSessionAsync(AttemptState attempt)
     {
+        if (attempt.ManagedSessionRegistered && _sessionRegistration is not null)
+        {
+            try
+            {
+                await _sessionRegistration.UnregisterManagedSessionAsync(
+                    attempt.Attempt.AccountId,
+                    attempt.Attempt.AttemptId,
+                    CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                _logger?.LogWarning(
+                    exception,
+                    "Could not unregister managed browser session for attempt {AttemptId}.",
+                    attempt.Attempt.AttemptId);
+            }
+            finally
+            {
+                attempt.ManagedSessionRegistered = false;
+            }
+        }
+
         if (attempt.Session is not null)
         {
             await attempt.Session.DisposeAsync();
@@ -1310,11 +1726,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
                 {
                     attempt.Consent?.Revoke();
                     _autoLoginAccounts.TryRemove(attempt.Attempt.AccountId, out _);
-                    if (attempt.Session is not null)
-                    {
-                        await attempt.Session.DisposeAsync();
-                        attempt.Session = null;
-                    }
+                    await DisposeAttemptSessionAsync(attempt);
 
                     if (attempt.ProfileCleanup is not null)
                     {
@@ -1348,7 +1760,7 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
             Timing = timing;
         }
 
-        public BrowserAuthAttempt Attempt { get; }
+        public BrowserAuthAttempt Attempt { get; set; }
         public string AccountEmail { get; }
         public BrowserProfileSessionContext Profile { get; }
         public BrowserAuthTimingRecorder Timing { get; }
@@ -1367,6 +1779,11 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
         public AutoLoginAttemptConsent? Consent { get; set; }
         public EphemeralCredentialContext? EphemeralCredential { get; set; }
         public EphemeralBrowserProfilePreparationResult? ProfileCleanup { get; set; }
+        public BrowserProfileSessionContext? CandidateProfile { get; set; }
+        public bool CandidatePromotionCommitted { get; set; }
+        public bool CandidateRetained { get; set; }
+        public bool ManagedSessionRegistered { get; set; }
+        public IProgress<BrowserAuthProgress>? Progress { get; set; }
         public SemaphoreSlim Gate { get; } = new(1, 1);
     }
 
@@ -1403,6 +1820,124 @@ public sealed class BrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemer
 
         return result;
     }
+
+    private async Task<BrowserAuthResult> ObservePostLoginAsync(
+        AttemptState attempt,
+        IProgress<BrowserAuthProgress>? progress,
+        int? totpRemainingSeconds,
+        CancellationToken cancellationToken)
+    {
+        LogEvent(attempt, "PostLoginObservationStarted");
+        ReportAttemptProgress(
+            attempt,
+            progress,
+            "ObservingPostLogin",
+            BrowserAuthState.ObservingPostLogin,
+            "Đã gửi mã xác thực hai bước. Đang kiểm tra kết quả đăng nhập.");
+
+        BrowserAuthResult? last = null;
+        var startedAt = Stopwatch.GetTimestamp();
+        var deadline = startedAt + (long)(_postLoginObservationBudget.TotalSeconds * Stopwatch.Frequency);
+        var operationTimeoutReported = false;
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            using var operationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var remainingTicks = deadline - Stopwatch.GetTimestamp();
+            var remainingMilliseconds = Math.Max(1, remainingTicks * 1000L / Stopwatch.Frequency);
+            operationCts.CancelAfter(TimeSpan.FromMilliseconds(Math.Min(_postLoginOperationBudget.TotalMilliseconds, remainingMilliseconds)));
+            try
+            {
+                last = await RefreshCoreAsync(attempt, operationCts.Token, totpRemainingSeconds);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                last = BrowserAuthResult.Failure(
+                    BrowserAuthState.ObservingPostLogin,
+                    "POST_LOGIN_OBSERVATION_OPERATION_TIMEOUT",
+                    "Provider chưa phản hồi trong thời gian cho phép của một lần quan sát.",
+                    attempt.Attempt.AttemptId);
+                if (!operationTimeoutReported)
+                {
+                    operationTimeoutReported = true;
+                    ReportAttemptProgress(
+                        attempt,
+                        progress,
+                        "ObservingPostLogin",
+                        BrowserAuthState.ObservingPostLogin,
+                        "Trang đăng nhập phản hồi chậm. FLASH ROUTER vẫn đang kiểm tra phiên trong giới hạn thời gian cho phép.");
+                }
+            }
+
+            if (last.State == BrowserAuthState.BrowserSessionObserved)
+            {
+                ReportAttemptProgress(
+                    attempt,
+                    progress,
+                    "ConfirmingBrowserSession",
+                    last.State,
+                    "Đã xác nhận phiên đăng nhập.");
+                return last;
+            }
+
+            if (last.State is BrowserAuthState.HumanActionRequired
+                or BrowserAuthState.ExternalProviderRequired
+                or BrowserAuthState.Failed
+                or BrowserAuthState.ProfileInUse
+                or BrowserAuthState.Cancelled
+                or BrowserAuthState.TimedOut)
+            {
+                LogEvent(attempt, "AuthenticationAttemptCompleted", last.Status);
+                ReportAttemptProgress(attempt, progress, "WaitingForUser", last.State, last.Message);
+                return last;
+            }
+
+            if (last.State == BrowserAuthState.MfaRequired)
+            {
+                var waiting = last with
+                {
+                    IsSuccess = false,
+                    State = BrowserAuthState.WaitingForUser,
+                    Status = "ADDITIONAL_MFA_REQUIRED",
+                    Message = "Provider yêu cầu thêm bước xác thực; hãy tiếp quản thao tác trong Chrome.",
+                    NextAction = null
+                };
+                LogEvent(attempt, "AuthenticationAttemptCompleted", waiting.Status);
+                ReportAttemptProgress(attempt, progress, "WaitingForUser", waiting.State, waiting.Message);
+                return WithTiming(waiting, attempt);
+            }
+
+            if (last.State is BrowserAuthState.GuestLandingLoginAvailable
+                or BrowserAuthState.EmailRequired
+                or BrowserAuthState.PasswordRequired)
+            {
+                attempt.State = BrowserAuthState.HumanActionRequired;
+                var recoverable = BrowserAuthResult.Failure(
+                    BrowserAuthState.HumanActionRequired,
+                    "POST_LOGIN_RETURNED_TO_AUTHENTICATION",
+                    "TOTP đã được gửi nhưng provider vẫn yêu cầu thêm thao tác; chưa xác nhận phiên đăng nhập.",
+                    attempt.Attempt.AttemptId);
+                LogEvent(attempt, "AuthenticationAttemptCompleted", recoverable.Status);
+                ReportAttemptProgress(attempt, progress, "WaitingForUser", recoverable.State, recoverable.Message);
+                return recoverable;
+            }
+
+            var remainingDelayTicks = deadline - Stopwatch.GetTimestamp();
+            if (remainingDelayTicks <= 0)
+            {
+                break;
+            }
+
+            var delayMilliseconds = Math.Max(1, Math.Min(250, remainingDelayTicks * 1000L / Stopwatch.Frequency));
+            await Task.Delay(TimeSpan.FromMilliseconds(delayMilliseconds), cancellationToken);
+        }
+
+        LogEvent(attempt, "PostLoginObservationTimedOut", "POST_LOGIN_OBSERVATION_TIMEOUT");
+        return await TimeoutAsync(
+            attempt,
+            "POST_LOGIN_OBSERVATION_TIMEOUT",
+            "Đã hết thời gian quan sát sau TOTP; không kết luận đăng nhập thành công. Hãy kiểm tra hoặc tiếp quản trong Chrome.",
+            "Bounded post-login observation");
+    }
 }
 
 public sealed class PreviewBrowserAuthOrchestrator : IBrowserAuthOrchestrator, IEphemeralBrowserAuthOrchestrator
@@ -1430,6 +1965,13 @@ public sealed class PreviewBrowserAuthOrchestrator : IBrowserAuthOrchestrator, I
             "Preview mode không mở Chrome hoặc đọc credential.",
             null));
 
+    public Task<BrowserAuthResult> ResumeAfterVaultUnlockAsync(Guid attemptId, IProgress<BrowserAuthProgress>? progress = null, CancellationToken cancellationToken = default)
+        => Task.FromResult(BrowserAuthResult.Failure(
+            BrowserAuthState.Failed,
+            "PREVIEW_BROWSER_AUTH_DISABLED",
+            "Preview mode không có browser attempt thật.",
+            attemptId));
+
     public Task<BrowserAuthResult> AutoLoginAsync(EphemeralBrowserAuthRequest request, IProgress<BrowserAuthProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         request.Credential.Clear();
@@ -1451,7 +1993,12 @@ public sealed class PreviewBrowserAuthOrchestrator : IBrowserAuthOrchestrator, I
     public Task<BrowserAuthResult> ActivateLoginEntryAsync(Guid attemptId, bool confirmed, CancellationToken cancellationToken = default)
         => Task.FromResult(BrowserAuthResult.Failure(BrowserAuthState.Failed, "PREVIEW_BROWSER_AUTH_DISABLED", "Preview mode không có browser attempt thật.", attemptId));
 
-    public Task<BrowserAuthResult> ConfirmAndFillAsync(Guid attemptId, BrowserAuthAction action, bool confirmed, CancellationToken cancellationToken = default)
+    public Task<BrowserAuthResult> ConfirmAndFillAsync(
+        Guid attemptId,
+        BrowserAuthAction action,
+        bool confirmed,
+        IProgress<BrowserAuthProgress>? progress = null,
+        CancellationToken cancellationToken = default)
         => Task.FromResult(BrowserAuthResult.Failure(BrowserAuthState.Failed, "PREVIEW_BROWSER_AUTH_DISABLED", "Preview mode không đọc credential hoặc điền browser.", attemptId));
 
     public Task<BrowserAuthResult> CancelAsync(Guid attemptId, CancellationToken cancellationToken = default)

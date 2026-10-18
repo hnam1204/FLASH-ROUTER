@@ -3,19 +3,25 @@
 @using FLASH_ROUTER.Components.Console.Components
 @using FlashAI.Foundation.Security
 @using FlashAI.Modules.Accounts.Contracts
-@using FlashAI.Modules.Activity.Contracts
 @using FlashAI.Modules.Connections.Application
 @using FlashAI.Modules.Connections.Contracts
+@using FlashAI.Modules.Connections.Domain
 @using FlashAI.Modules.Diagnostics.Contracts
+@using FlashAI.Modules.Activity.Contracts
 @using Microsoft.JSInterop
 @inject IAccountWorkspaceReader AccountReader
 @inject IAccountCommandPort AccountCommand
 @inject IBrowserProfileUiPort BrowserProfilePort
-@inject IBrowserAuthOrchestrator BrowserAuth
-@inject IEphemeralBrowserAuthOrchestrator EphemeralBrowserAuth
+@inject IAccountBrowserSessionManager BrowserSessionManager
+@inject IAccountUsageReader AccountUsageReader
+@inject ICleanBrowserReloginService CleanBrowserRelogin
+@inject IAccountCredentialUiPort CredentialPort
+@inject IAccountConnectionsReader AccountConnectionsReader
+@inject IAccountCopyUiPort AccountCopyPort
 @inject IPlaywrightBrowserRuntime BrowserRuntime
 @inject IConsoleProviderRegistry ProviderRegistry
 @inject IActivityUiPort ActivityPort
+@inject IActivityEventStream ActivityEventStream
 @inject IDiagnosticsUiPort DiagnosticsPort
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
@@ -23,40 +29,41 @@
 <PageTitle>FLASH ROUTER | AI Auto Login Console</PageTitle>
 
 <div class="master-app-shell" data-theme-active="@_currentTheme">
-    <!-- 1. LEFT APPLICATION SIDEBAR -->
-    <AppSidebar ActiveTab="@_activeTab"
-                OnTabSelected="HandleTabSelected"
-                HasNotifications="true" />
-
-    <!-- 2. MAIN APPLICATION WORKSPACE -->
+    <!-- Single-page account workspace -->
     <div class="master-workspace">
-        <!-- TOPBAR -->
         <AppTopbar SearchText="@_globalSearchText"
                    OnSearchChanged="HandleGlobalSearchChanged"
                    CurrentTheme="@_currentTheme"
-                   OnToggleTheme="ToggleThemeAsync" />
+                   OnToggleTheme="ToggleThemeAsync"
+                   IsHealthy="@_isSystemHealthy"
+                   StatusText="@_systemStatusText" />
 
-        <!-- CONSOLE BODY LAYOUT -->
         <div class="console-body-layout">
-            <!-- CENTER MAIN CONSOLE -->
             <main class="main-console-content" role="main">
-                <!-- Page Header matching reference image -->
                 <header class="console-page-header">
                     <div class="page-title-group">
                         <div class="title-with-badge">
-                            <h1 class="page-title">Quản lý toàn bộ account</h1>
+                            <h1 class="page-title">Quản lý tài khoản</h1>
                             <span class="console-badge" title="FLASH ROUTER Master Console">AI Auto Login Console</span>
                         </div>
                         <p class="page-subtitle">
-                            Quản lý tập trung tất cả tài khoản trên nhiều nền tảng, theo dõi trạng thái và hoạt động trong một nơi.
+                            Quản lý tập trung tài khoản, phiên đăng nhập và thông tin sử dụng trên nhiều nền tảng.
                         </p>
                     </div>
 
-                    <div class="page-header-meta">
-                        <span class="system-time">@_systemTimeString</span>
-                        <div class="system-status-pill">
-                            <span class="status-indicator-dot @(_isSystemHealthy ? "is-healthy" : "is-warning")"></span>
-                            <span class="status-indicator-text">@_systemStatusText</span>
+                    <div class="page-header-actions">
+                        <button type="button" class="page-primary-action" @onclick="OpenAddAccountDialog">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" aria-hidden="true">
+                                <path d="M12 5v14M5 12h14"></path>
+                            </svg>
+                            <span>Thêm tài khoản</span>
+                        </button>
+                        <div class="page-header-meta">
+                            <span class="system-time">Cập nhật lúc @_systemTimeString</span>
+                            <div class="system-status-pill">
+                                <span class="status-indicator-dot @(_isSystemHealthy ? "is-healthy" : "is-warning")"></span>
+                                <span class="status-indicator-text">@_systemStatusText</span>
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -74,8 +81,7 @@
                                       OnStatusChanged="HandleStatusFilterChanged"
                                       TableSearchText="@_tableSearchText"
                                       OnTableSearchChanged="HandleTableSearchChanged"
-                                      OnRefresh="RefreshDataAsync"
-                                      OnAddAccount="OpenAddAccountDialog" />
+                                      OnRefresh="RefreshDataAsync" />
 
                 <!-- Accounts Table Section -->
                 <AccountsTable Accounts="@_pagedAccounts"
@@ -88,7 +94,7 @@
                                OnLoginAgain="HandleLoginAgain"
                                OnEditAccount="HandleEditAccount"
                                OnDeleteAccount="HandleDeleteAccount"
-                               OnCopyEmail="HandleCopyEmail"
+                               OnCopyAccount="HandleCopyAccount"
                                OnToggleSort="HandleToggleSort"
                                CurrentPage="@_currentPage"
                                PageSize="@_pageSize"
@@ -100,17 +106,21 @@
             <!-- 3. RIGHT ACCOUNT INSPECTOR -->
             <AccountInspector Account="@_selectedAccountDetail"
                               ActivityEvents="@_selectedAccountActivities"
+                              BrowserRuntime="@_selectedBrowserRuntime"
+                              Usage="@_selectedUsage"
                               OnOpenAccount="HandleOpenAccountFromDetail"
                               OnLoginAgain="HandleLoginAgainFromDetail"
+                              OnCloseBrowser="HandleCloseBrowserFromDetail"
                               OnEditAccount="HandleEditAccountFromDetail"
                               OnDeleteAccount="HandleDeleteAccountFromDetail"
                               OnSaveNotes="HandleSaveNotes"
-                              OnCopyEmail="HandleCopyEmail" />
+                               OnCopyAccount="HandleCopyAccount"
+                               OnOpenConsoleLog="OpenConsoleLog" />
         </div>
     </div>
 
     <!-- DIALOGS & MODALS -->
-    <!-- Add Account Dialog with EMAIL|PASS|2FA and Temporary / KeepBrowserSession support -->
+    <!-- Unified provider and credential entry -->
     <AddAccountDialog IsOpen="@_isAddAccountOpen"
                       OnClose="CloseAddAccountDialog"
                       OnSave="HandleCreateAccount" />
@@ -136,20 +146,106 @@
                               IsRunning="@_isAutomationRunning"
                               IsSuccess="@_isAutomationSuccess"
                               OnClose="CloseAutomationDialog"
+                               OnHide="HideAutomationProgress"
                               OnCancel="CancelAutomation" />
 
-    <!-- AI Auto Login Console Developer Shell & Automation Support -->
+    @if (_isCopyConfirmationOpen)
+    {
+        <div class="flash-overlay-backdrop" @onclick="CancelCopyAccount">
+            <div class="flash-modal-card credential-copy-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="credential-copy-title">
+                <div class="flash-modal-header">
+                    <h3 id="credential-copy-title" class="flash-modal-title">Sao chép thông tin đăng nhập</h3>
+                    <button type="button" class="flash-modal-close-btn" @onclick="CancelCopyAccount" aria-label="Đóng">✕</button>
+                </div>
+                <div class="flash-modal-body">
+                    <p>Bạn sắp sao chép email, mật khẩu và thông tin 2FA của tài khoản này vào clipboard.</p>
+                    <p class="credential-copy-format">Định dạng: <code>EMAIL | PASS | 2FA</code></p>
+                    <p class="credential-copy-warning">Clipboard có thể được các ứng dụng khác đọc. Chỉ sao chép khi thực sự cần.</p>
+                    @if (_copyFeedback is not null)
+                    {
+                        <div class="modal-error-banner" role="alert">@_copyFeedback</div>
+                    }
+                </div>
+                <div class="flash-modal-footer">
+                    <button type="button" class="btn-modal-secondary" @onclick="CancelCopyAccount">Hủy</button>
+                    <button type="button" class="btn-modal-primary" @onclick="ConfirmCopyAccount">Sao chép tài khoản</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_isConsoleLogOpen)
+    {
+        <div class="flash-overlay-backdrop console-log-backdrop" @onclick="CloseConsoleLog">
+            <section class="console-log-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="console-log-title">
+                <header class="console-log-header">
+                    <div>
+                        <span class="inspector-eyebrow">LIVE AUTOMATION</span>
+                        <h2 id="console-log-title">Nhật ký tự động hóa</h2>
+            <p>Theo dõi toàn bộ quá trình đăng nhập và quản lý trình duyệt · @(_selectedAccountDetail?.Email ?? "Tài khoản chưa chọn")</p>
+                <div class="console-log-context" aria-label="Ngữ cảnh nhật ký tự động hóa">
+                            <span>Provider: @FormatProviderName(_selectedAccountDetail?.Provider ?? "Chưa rõ")</span>
+                            <span>Attempt: @FormatAttemptId(_selectedAccountDetail?.LastAuthenticationAttemptId)</span>
+                            <span>Status: @FormatAuthenticationState(_selectedAccountDetail?.AuthenticationState)</span>
+                            <span class="console-log-connection">@_consoleLogConnectionText</span>
+                        </div>
+                    </div>
+                    <button type="button" class="flash-modal-close-btn" @onclick="CloseConsoleLog" aria-label="Đóng Console Log">✕</button>
+                </header>
+                <div class="console-log-toolbar">
+                    <select @bind="_consoleLogSeverity" aria-label="Lọc nhật ký tự động hóa">
+                        <option value="all">Tất cả</option>
+                        <option value="Warning">Cảnh báo</option>
+                        <option value="Error">Lỗi</option>
+                    </select>
+                    <input type="search" @bind="_consoleLogSearch" placeholder="Tìm trong nhật ký đã được làm sạch..." aria-label="Tìm nhật ký tự động hóa" />
+                    <button type="button" class="@(_consoleLogAutoScroll ? "is-active" : "")" @onclick="ToggleConsoleLogAutoScroll">Tự cuộn: @(_consoleLogAutoScroll ? "Bật" : "Tắt")</button>
+                    <button type="button" class="@(_consoleLogTechnicalDetails ? "is-active" : "")" @onclick="ToggleConsoleLogTechnicalDetails">Chi tiết kỹ thuật</button>
+                    <button type="button" @onclick="ClearConsoleLogView">Xóa hiển thị</button>
+                    <button type="button" @onclick="CopyConsoleLog">Sao chép nhật ký</button>
+                    <button type="button" @onclick="ExportConsoleLog">Xuất nhật ký</button>
+                </div>
+                <div id="console-log-stream" class="console-log-stream" role="log" aria-live="polite">
+                    @if (FilteredConsoleEvents.Count == 0)
+                    {
+                        <div class="console-log-empty">@(_selectedAccountActivities.Count == 0 ? "Chưa có nhật ký" : "Không có sự kiện phù hợp bộ lọc")</div>
+                    }
+                    else
+                    {
+                        var line = 0;
+                        foreach (var ev in FilteredConsoleEvents)
+                        {
+                            line++;
+                            <div class="console-log-line @(_consoleLogTechnicalDetails ? "has-technical-details" : "compact-message")">
+                                <span class="console-log-index">@line.ToString("000")</span>
+                                <span class="console-log-time">@ev.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                                <span class="console-log-severity @ev.Severity.ToLowerInvariant()">@FormatSeverity(ev.Severity).ToUpperInvariant()</span>
+                                @if (_consoleLogTechnicalDetails)
+                                {
+                                    <span class="console-log-source">[@(ev.Source ?? "Activity")]</span>
+                                    <span class="console-log-message">@FormatConsoleEvent(ev)@(ev.DurationMs is long duration ? $" · {duration}ms" : string.Empty)</span>
+                                }
+                                else
+                                {
+                                    <span class="console-log-message">@FormatConsoleEvent(ev)@(ev.DurationMs is long duration ? $" · {duration}ms" : string.Empty)</span>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </section>
+        </div>
+    }
+
+    <!-- Compatibility hooks retained for existing automation tests. -->
     <div class="developer-shell-support" style="display:none;" aria-hidden="true" data-purpose="automation-support">
         <button type="button" class="theme-toggle-btn" @onclick="ToggleThemeAsync">Theme Toggle</button>
         <span class="spec-format">EMAIL|PASS|2FA</span>
-        <span class="spec-mode">Temporary</span>
-        <span class="spec-mode">KeepBrowserSession</span>
     </div>
 </div>
 
 @code {
     private string _currentTheme = "dark";
-    private string _activeTab = "accounts";
     private string _globalSearchText = "";
     private string _tableSearchText = "";
     private string _platformFilter = "all";
@@ -164,6 +260,8 @@
     private Guid? _selectedAccountId;
     private AccountDetailVm? _selectedAccountDetail;
     private List<ActivityEventVm> _selectedAccountActivities = [];
+    private BrowserRuntimeSnapshot? _selectedBrowserRuntime;
+    private AccountUsageView? _selectedUsage;
 
     private int _currentPage = 1;
     private int _pageSize = 10;
@@ -172,8 +270,8 @@
     private int _unverifiedAccountsCount = 0;
     private int _failedAccountsCount = 0;
 
-    private string _systemTimeString = DateTime.Now.ToString("dddd, dd 'Tháng' MM, yyyy HH:mm", new System.Globalization.CultureInfo("vi-VN"));
-    private string _systemStatusText = "Hệ thống hoạt động bình thường";
+    private string _systemTimeString = DateTime.Now.ToString("dd/MM/yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+    private string _systemStatusText = "Lưu trữ cục bộ sẵn sàng";
     private bool _isSystemHealthy = true;
 
     // Dialogs state
@@ -191,9 +289,36 @@
     private bool _isAutomationRunning = false;
     private bool _isAutomationSuccess = false;
     private CancellationTokenSource? _automationCts;
+    private Guid? _activeAutomationAttemptId;
+    private IDisposable? _activitySubscription;
+    private Guid? _copyConfirmationAccountId;
+    private bool _isCopyConfirmationOpen;
+    private string? _copyFeedback;
+    private bool _isConsoleLogOpen;
+    private string _consoleLogSeverity = "all";
+    private string _consoleLogSearch = string.Empty;
+    private bool _consoleLogAutoScroll = true;
+    private bool _consoleLogTechnicalDetails;
+    private string _consoleLogConnectionText = "Live · đã kết nối";
+    private readonly List<ActivityEventVm> _clearedConsoleEvents = [];
+
+    private IReadOnlyList<ActivityEventVm> FilteredConsoleEvents
+        => _selectedAccountActivities
+            .Where(item => !_clearedConsoleEvents.Contains(item))
+            .Where(item => _consoleLogSeverity.Equals("all", StringComparison.OrdinalIgnoreCase)
+                || item.Severity.Equals(_consoleLogSeverity, StringComparison.OrdinalIgnoreCase))
+            .Where(item => string.IsNullOrWhiteSpace(_consoleLogSearch)
+                || FormatConsoleEvent(item).Contains(_consoleLogSearch, StringComparison.OrdinalIgnoreCase)
+                || (_consoleLogTechnicalDetails && item.EventType.Contains(_consoleLogSearch, StringComparison.OrdinalIgnoreCase))
+                || (_consoleLogTechnicalDetails && (item.SafeDetails?.Contains(_consoleLogSearch, StringComparison.OrdinalIgnoreCase) ?? false)))
+            .OrderBy(item => item.Timestamp)
+            .ThenBy(item => item.EventId)
+            .Take(200)
+            .ToArray();
 
     protected override async Task OnInitializedAsync()
     {
+        _activitySubscription = ActivityEventStream.Subscribe(HandleLiveActivityAsync);
         await LoadThemeAsync();
         await LoadDiagnosticsAsync();
         await RefreshDataAsync();
@@ -240,19 +365,19 @@
                                || diag.Mode.Contains("Preview", StringComparison.OrdinalIgnoreCase);
 
             _systemStatusText = _isSystemHealthy
-                ? "Hệ thống hoạt động bình thường"
-                : "Hệ thống đang kiểm tra trạng thái";
+                ? "Lưu trữ cục bộ sẵn sàng"
+                : "Đang kiểm tra lưu trữ";
         }
         catch
         {
             _isSystemHealthy = true;
-            _systemStatusText = "Hệ thống hoạt động bình thường";
+            _systemStatusText = "Lưu trữ cục bộ sẵn sàng";
         }
     }
 
     private async Task RefreshDataAsync()
     {
-        _systemTimeString = DateTime.Now.ToString("dddd, dd 'Tháng' MM, yyyy HH:mm", new System.Globalization.CultureInfo("vi-VN"));
+        _systemTimeString = DateTime.Now.ToString("dd/MM/yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
 
         try
         {
@@ -266,8 +391,10 @@
 
         // Calculate KPIs from actual real loaded accounts
         _totalAccountsCount = _allAccounts.Count;
-        _activeAccountsCount = _allAccounts.Count(a => a.Status.Equals("Connected", StringComparison.OrdinalIgnoreCase) || a.Status.Equals("Active", StringComparison.OrdinalIgnoreCase));
-        _unverifiedAccountsCount = _allAccounts.Count(a => a.Status.Equals("Unverified", StringComparison.OrdinalIgnoreCase) || a.Status.Equals("ReauthNeeded", StringComparison.OrdinalIgnoreCase));
+        _activeAccountsCount = _allAccounts.Count(a => a.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase));
+        _unverifiedAccountsCount = _allAccounts.Count(a => !a.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase)
+            && !a.Status.Equals("ConnectionError", StringComparison.OrdinalIgnoreCase)
+            && !a.Status.Equals("Failed", StringComparison.OrdinalIgnoreCase));
         _failedAccountsCount = _allAccounts.Count(a => a.Status.Equals("ConnectionError", StringComparison.OrdinalIgnoreCase) || a.Status.Equals("Failed", StringComparison.OrdinalIgnoreCase));
 
         ApplyFiltersAndPagination();
@@ -340,14 +467,26 @@
     {
         try
         {
-            _selectedAccountDetail = await AccountReader.GetAccountDetailAsync(accountId);
+            var detail = await AccountReader.GetAccountDetailAsync(accountId);
+            var connections = await AccountConnectionsReader.ListForAccountAsync(accountId);
+            var credentialReferencePresent = connections.Any(connection =>
+                connection.ProviderId.Equals("openai-chatgpt", StringComparison.OrdinalIgnoreCase)
+                && connection.ConnectionKind == ConnectionKind.Manual
+                && connection.CredentialAvailability == ConnectionCredentialAvailability.StoredReference);
+            _selectedAccountDetail = detail is null
+                ? null
+                : detail with { CredentialReferencePresent = credentialReferencePresent };
             var events = await ActivityPort.GetEventsAsync(accountId);
             _selectedAccountActivities = events.ToList();
+            _selectedBrowserRuntime = await BrowserSessionManager.GetStatusAsync(accountId);
+            _selectedUsage = await AccountUsageReader.GetAsync(accountId);
         }
         catch
         {
             _selectedAccountDetail = null;
             _selectedAccountActivities = [];
+            _selectedBrowserRuntime = null;
+            _selectedUsage = null;
         }
     }
 
@@ -425,11 +564,6 @@
         ApplyFiltersAndPagination();
     }
 
-    private void HandleTabSelected(string tab)
-    {
-        _activeTab = tab;
-    }
-
     // Modal Operations
     private void OpenAddAccountDialog() => _isAddAccountOpen = true;
     private void CloseAddAccountDialog() => _isAddAccountOpen = false;
@@ -444,20 +578,54 @@
 
     private void CloseAutomationDialog() => _isAutomationDialogOpen = false;
 
-    private async Task HandleCreateAccount(AccountEditorVm model)
+    private void HideAutomationProgress() => _isAutomationDialogOpen = false;
+
+    private async Task HandleCreateAccount(CreateAccountRequest request)
     {
         _isAddAccountOpen = false;
         try
         {
-            var res = await AccountCommand.CreateAccountAsync(model);
-            if (res.IsSuccess)
+            if (!CredentialLineCodec.TryParse(request.CredentialLine, out var credential, out var parseError) || credential is null)
             {
-                await RefreshDataAsync();
+                ShowAutomationFailure("Credential không hợp lệ", parseError);
+                return;
             }
+
+            var createResult = await AccountCommand.CreateAccountAsync(request.Profile);
+            if (!createResult.IsSuccess)
+            {
+                ShowAutomationFailure("Không thể lưu tài khoản", createResult.Message ?? "Dữ liệu tài khoản chưa hợp lệ.");
+                return;
+            }
+
+            var account = (await AccountReader.GetAccountsAsync(request.Profile.Email))
+                .FirstOrDefault(item => item.Provider.Equals(request.Profile.Provider, StringComparison.OrdinalIgnoreCase));
+            if (account is null)
+            {
+                ShowAutomationFailure("Không thể xác định tài khoản", "Tài khoản đã lưu nhưng không tìm thấy bản ghi để gắn credential.");
+                return;
+            }
+
+            var credentialResult = await CredentialPort.SaveAsync(
+                account.AccountId,
+                new ChatGptCredentialInput(credential.Account, credential.Password, credential.TotpSeed, true));
+            if (!credentialResult.IsSuccess)
+            {
+                ShowAutomationFailure("Không thể lưu credential", credentialResult.Message);
+                await RefreshDataAsync();
+                return;
+            }
+
+            await RefreshDataAsync();
+            await ExecuteLoginAgain(account.AccountId, account.Email);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error creating account: {ex.Message}");
+            ShowAutomationFailure("Không thể hoàn tất đăng ký", ex.Message);
+        }
+        finally
+        {
+            request.ClearSensitive();
         }
     }
 
@@ -475,15 +643,35 @@
         _isEditAccountOpen = true;
     }
 
-    private async Task HandleUpdateAccount((Guid Id, AccountEditorVm Model) args)
+    private async Task HandleUpdateAccount((Guid Id, AccountEditorVm Model, CredentialUpdateInput? Credential) args)
     {
         try
         {
             var res = await AccountCommand.UpdateAccountAsync(args.Id, args.Model);
-            if (res.IsSuccess)
+            if (!res.IsSuccess)
             {
-                await RefreshDataAsync();
+                ShowAutomationFailure("Không thể lưu thay đổi", res.Message ?? "Dữ liệu tài khoản chưa hợp lệ.");
+                return;
             }
+
+            if (args.Credential is not null)
+            {
+                var credentialResult = await CredentialPort.UpdateAsync(args.Id, args.Credential);
+                if (!credentialResult.IsSuccess)
+                {
+                    var title = credentialResult.Status == "LEGACY_UNLOCK_REQUIRED"
+                        ? "Credential cần thay thế"
+                        : "Không thể cập nhật credential";
+                    ShowAutomationFailure(title, credentialResult.Message);
+                    return;
+                }
+
+                await RefreshDataAsync();
+                await ExecuteLoginAgain(args.Id, args.Model.Email);
+                return;
+            }
+
+            await RefreshDataAsync();
         }
         catch (Exception ex)
         {
@@ -547,16 +735,216 @@
         await LoadAccountDetailAsync(args.Id);
     }
 
-    private async Task HandleCopyEmail(string email)
+    private void ShowAutomationFailure(string title, string message)
     {
+        _automationDialogTitle = title;
+        _automationStage = "Không thể hoàn tất";
+        _automationStatusMessage = message;
+        _automationTechnicalDetail = null;
+        _isAutomationRunning = false;
+        _isAutomationSuccess = false;
+        _isAutomationDialogOpen = true;
+    }
+
+    private async Task HandleCopyAccount(Guid accountId)
+    {
+        _copyConfirmationAccountId = accountId;
+        _copyFeedback = null;
+        _isCopyConfirmationOpen = true;
+        if (_selectedAccountId != accountId)
+        {
+            await HandleAccountSelected(accountId);
+        }
+    }
+
+    private void CancelCopyAccount()
+    {
+        _isCopyConfirmationOpen = false;
+        _copyConfirmationAccountId = null;
+        _copyFeedback = null;
+    }
+
+    private async Task ConfirmCopyAccount()
+    {
+        if (_copyConfirmationAccountId is not Guid accountId)
+        {
+            CancelCopyAccount();
+            return;
+        }
+
         try
         {
-            await JSRuntime.InvokeVoidAsync("flashRouter.copyToClipboard", email);
+            var result = await AccountCopyPort.CopySavedCredentialsAsync(accountId, confirmed: true);
+            if (!result.IsSuccess || string.IsNullOrEmpty(result.ClipboardText))
+            {
+                _copyFeedback = result.Message;
+                return;
+            }
+
+            var clipboardText = result.ClipboardText;
+            var copied = await JSRuntime.InvokeAsync<bool>("flashRouter.copyToClipboard", clipboardText);
+            await AccountCopyPort.RecordClipboardOutcomeAsync(
+                accountId,
+                copied,
+                copied ? null : "CLIPBOARD_WRITE_FAILED");
+            if (!copied)
+            {
+                _copyFeedback = "Không thể ghi dữ liệu vào clipboard. Không có secret nào được hiển thị trong giao diện.";
+                return;
+            }
+
+            CancelCopyAccount();
+            await LoadAccountDetailAsync(accountId);
         }
         catch
         {
-            // Fallback handled in JS
+            await AccountCopyPort.RecordClipboardOutcomeAsync(accountId, succeeded: false, errorCode: "CLIPBOARD_WRITE_FAILED");
+            _copyFeedback = "Không thể ghi dữ liệu vào clipboard. Không có secret nào được hiển thị trong giao diện.";
         }
+    }
+
+    private async Task HandleLiveActivityAsync(ActivityEventVm activityEvent)
+    {
+        if (_selectedAccountId is not Guid selectedAccountId || activityEvent.AccountId != selectedAccountId)
+        {
+            return;
+        }
+
+        await InvokeAsync(async () =>
+        {
+            await LoadAccountDetailAsync(selectedAccountId);
+            StateHasChanged();
+            if (_isConsoleLogOpen && _consoleLogAutoScroll)
+            {
+                await JSRuntime.InvokeVoidAsync("flashRouter.scrollConsole", "console-log-stream");
+            }
+        });
+    }
+
+    private async Task OpenConsoleLog(Guid accountId)
+    {
+        if (_selectedAccountId != accountId)
+        {
+            await HandleAccountSelected(accountId);
+        }
+
+        _consoleLogSeverity = "all";
+        _consoleLogSearch = string.Empty;
+        _consoleLogTechnicalDetails = false;
+        _clearedConsoleEvents.Clear();
+        _consoleLogConnectionText = "Live · đã kết nối";
+        _isConsoleLogOpen = true;
+    }
+
+    private void CloseConsoleLog() => _isConsoleLogOpen = false;
+
+    private void ClearConsoleLogView()
+    {
+        _clearedConsoleEvents.Clear();
+        _clearedConsoleEvents.AddRange(_selectedAccountActivities);
+    }
+
+    private async Task CopyConsoleLog()
+    {
+        var text = string.Join(Environment.NewLine, FilteredConsoleEvents.Select(BuildConsoleLogLine));
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            await JSRuntime.InvokeVoidAsync("flashRouter.copyToClipboard", text);
+        }
+    }
+
+    private void ToggleConsoleLogAutoScroll() => _consoleLogAutoScroll = !_consoleLogAutoScroll;
+
+    private void ToggleConsoleLogTechnicalDetails() => _consoleLogTechnicalDetails = !_consoleLogTechnicalDetails;
+
+    private async Task ExportConsoleLog()
+    {
+        var text = string.Join(Environment.NewLine, FilteredConsoleEvents.Select(BuildConsoleLogLine));
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            await JSRuntime.InvokeVoidAsync(
+                "flashRouter.downloadTextFile",
+                $"flash-router-console-{DateTime.UtcNow:yyyyMMdd-HHmmss}.log",
+                text,
+                "text/plain;charset=utf-8");
+        }
+    }
+
+    private static string FormatAttemptId(Guid? attemptId)
+        => attemptId is Guid value ? value.ToString("N")[..12] : "Chưa có";
+
+    private string BuildConsoleLogLine(ActivityEventVm item)
+    {
+        var technical = _consoleLogTechnicalDetails
+            ? $" [{item.Source ?? "Activity"}] {item.EventType}"
+                + (item.AttemptId is Guid attempt ? $" attempt={attempt:N}" : string.Empty)
+                + (item.ErrorCode is null ? string.Empty : $" error={item.ErrorCode}")
+            : string.Empty;
+        return $"{item.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss} {FormatSeverity(item.Severity).ToUpperInvariant()} {FormatConsoleEvent(item)}{technical}";
+    }
+
+    private static string FormatConsoleEvent(ActivityEventVm item)
+        => item.EventType switch
+        {
+            "AttemptStarted" or "EphemeralAttemptStarted" => "Bắt đầu đăng nhập tài khoản",
+            "CredentialStored" => "Đã lưu thông tin đăng nhập an toàn",
+            "BrowserProfileSelected" => "Đã chọn hồ sơ trình duyệt",
+            "ProfileLeaseAcquired" => "Đã chuẩn bị trình duyệt",
+            "ChromeLaunchSucceeded" => "Đã mở Chromium thành công",
+            "OfficialNavigationStarted" => "Đang truy cập trang đăng nhập chính thức",
+            "OfficialNavigationSucceeded" or "OfficialChatGPTReached" => "Đã truy cập ChatGPT",
+            "GuestLandingDetected" => "Đã nhận diện trang chưa đăng nhập",
+            "LoginCtaActivated" => "Đã mở biểu mẫu đăng nhập",
+            "EmailModalDetected" or "EmailFilled" => "Đã nhập địa chỉ email",
+            "EmailContinued" => "Đã tiếp tục với email",
+            "PasswordStepDetected" => "Đã chuyển đến bước mật khẩu",
+            "PasswordSubmitted" => "Đã gửi mật khẩu",
+            "MfaStepDetected" => "Trang web yêu cầu mã xác thực hai bước",
+            "TotpSubmitted" => "Đã gửi mã xác thực hai bước",
+            "PostLoginObservationStarted" => "Đang kiểm tra kết quả đăng nhập",
+            "BrowserSessionObserved" => "Đã nhận diện dấu hiệu phiên đăng nhập",
+            "AuthenticatedSessionConfirmed" => "Đã xác nhận phiên đăng nhập",
+            "IdentityResolutionPending" => "Đang xác định thông tin tài khoản",
+            "IdentityResolutionPartial" or "IdentityResolutionUnsupported" => "Chưa thể lấy thông tin tài khoản từ nguồn hiện có",
+            "BrowserClosed" => "Đã đóng trình duyệt",
+            "BrowserCrashed" or "BrowserDisconnected" => "Trình duyệt đã dừng bất thường",
+            "AttemptCancelled" => "Quá trình đăng nhập đã bị hủy",
+            "PostLoginObservationTimedOut" or "ObservationTimedOut" => "Không thể xác minh phiên trong thời gian cho phép",
+            "CandidateReadyForPromotion" => "Hồ sơ đăng nhập mới đang chờ xác nhận thay thế",
+            "CandidatePromotionCommitted" => "Đã ghi nhận hồ sơ trình duyệt mới",
+            "CandidatePromotionFailed" => "Không thể ghi nhận hồ sơ trình duyệt mới",
+            "AutoLoginCompleted" or "AuthenticationAttemptCompleted" => "Đã hoàn tất quy trình xác thực",
+            _ when item.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase) => "Quy trình gặp lỗi cần kiểm tra",
+            _ => item.Summary
+        };
+
+    private static string FormatAuthenticationState(string? state)
+        => state switch
+        {
+            "AuthenticatedSessionConfirmed" => "Đăng nhập thành công",
+            "BrowserSessionObserved" => "Đã quan sát phiên",
+            "LoginInProgress" => "Đang đăng nhập",
+            "MfaRequired" => "Cần MFA",
+            "WaitingForUser" => "Cần thao tác người dùng",
+            _ => string.IsNullOrWhiteSpace(state) ? "Chưa xác minh" : state
+        };
+
+    private static string FormatSeverity(string severity)
+        => severity.ToUpperInvariant() switch
+        {
+            "SUCCESS" or "PASS" => "PASS",
+            "WARNING" or "WARN" => "WARN",
+            "ERROR" => "ERROR",
+            _ => "INFO"
+        };
+
+    private static string FormatProviderName(string provider)
+    {
+        if (provider.Contains("chatgpt", StringComparison.OrdinalIgnoreCase) || provider.Contains("openai", StringComparison.OrdinalIgnoreCase)) return "ChatGPT";
+        if (provider.Contains("claude", StringComparison.OrdinalIgnoreCase) || provider.Contains("anthropic", StringComparison.OrdinalIgnoreCase)) return "Claude";
+        if (provider.Contains("gemini", StringComparison.OrdinalIgnoreCase) || provider.Contains("google", StringComparison.OrdinalIgnoreCase)) return "Gemini";
+        if (provider.Contains("perplexity", StringComparison.OrdinalIgnoreCase)) return "Perplexity";
+        return string.IsNullOrWhiteSpace(provider) ? "Chưa rõ" : provider;
     }
 
     // Automation Operations (Playwright Managed Chromium)
@@ -586,19 +974,16 @@
 
         try
         {
-            var launchResult = await BrowserProfilePort.OpenAsync(
-                accountId,
-                BrowserOpenTarget.ChatGpt,
-                "openai-chatgpt",
-                _automationCts.Token);
+            var launchResult = await BrowserSessionManager.OpenAsync(accountId, _automationCts.Token);
 
             if (launchResult.IsSuccess)
             {
                 _automationStage = "Hoàn tất";
                 _automationStatusMessage = $"Đã mở cửa sổ trình duyệt Chromium thành công cho tài khoản {email}.";
-                _automationTechnicalDetail = $"Profile Directory: {launchResult.Binding?.OpaqueProfileIdentifier ?? "Cô lập"}";
+                _automationTechnicalDetail = $"Runtime: {launchResult.Snapshot.RuntimeState}; profile ownership is account-scoped.";
                 _isAutomationRunning = false;
                 _isAutomationSuccess = true;
+                await RefreshDataAsync();
             }
             else
             {
@@ -621,6 +1006,45 @@
         StateHasChanged();
     }
 
+    private Task HandleCloseBrowserFromDetail(AccountDetailVm account)
+        => ExecuteBrowserOperationAsync(account.AccountId, "Đóng trình duyệt", BrowserSessionManager.CloseAsync);
+
+    private async Task ExecuteBrowserOperationAsync(
+        Guid accountId,
+        string operation,
+        Func<Guid, CancellationToken, Task<BrowserOperationResult>> action)
+    {
+        _automationDialogTitle = operation;
+        _automationStage = "Đang xử lý";
+        _automationStatusMessage = operation + " cho account đang chọn...";
+        _automationTechnicalDetail = "Account-scoped browser lifecycle";
+        _isAutomationRunning = true;
+        _isAutomationSuccess = false;
+        _isAutomationDialogOpen = true;
+        StateHasChanged();
+        try
+        {
+            var result = await action(accountId, CancellationToken.None);
+            _automationStage = result.IsSuccess ? "Hoàn tất" : "Chưa hoàn tất";
+            _automationStatusMessage = result.Message;
+            _automationTechnicalDetail = result.Status;
+            _isAutomationSuccess = result.IsSuccess;
+            _selectedBrowserRuntime = result.Snapshot;
+            await RefreshDataAsync();
+        }
+        catch
+        {
+            _automationStage = "Lỗi thao tác";
+            _automationStatusMessage = "Không thể hoàn tất thao tác browser của account này.";
+            _automationTechnicalDetail = "BROWSER_OPERATION_FAILED";
+        }
+        finally
+        {
+            _isAutomationRunning = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task HandleLoginAgain(AccountListItemVm account)
     {
         await ExecuteLoginAgain(account.AccountId, account.Email);
@@ -634,12 +1058,14 @@
     private async Task ExecuteLoginAgain(Guid accountId, string email)
     {
         _automationCts?.Cancel();
+        _automationCts?.Dispose();
         _automationCts = new CancellationTokenSource();
+        _activeAutomationAttemptId = null;
 
-        _automationDialogTitle = "Đăng nhập tự động";
-        _automationStage = "Xác thực";
-        _automationStatusMessage = $"Đang kết nối luồng xác thực trình duyệt cho {email}...";
-        _automationTechnicalDetail = "Điều hướng tới trang đăng nhập chính thức...";
+        _automationDialogTitle = "Đăng nhập lại bằng profile mới";
+        _automationStage = "Đang chuẩn bị trình duyệt";
+        _automationStatusMessage = $"Đang đóng phiên browser cũ và chuẩn bị profile Chromium mới cho {email}...";
+        _automationTechnicalDetail = "Credential sẽ được đọc từ Vault; profile cũ không bị xóa.";
         _isAutomationRunning = true;
         _isAutomationSuccess = false;
         _isAutomationDialogOpen = true;
@@ -647,33 +1073,51 @@
 
         try
         {
+            await BrowserSessionManager.CloseAsync(accountId, _automationCts.Token);
             var progress = new Progress<BrowserAuthProgress>(p =>
             {
-                _automationStage = p.Stage;
+                if (p.AttemptId is Guid attemptId)
+                {
+                    if (_activeAutomationAttemptId is Guid active && active != attemptId)
+                    {
+                        return;
+                    }
+
+                    _activeAutomationAttemptId = attemptId;
+                }
+
+                _automationStage = FormatAutomationStage(p.Stage, p.State);
                 _automationStatusMessage = p.Message;
-                InvokeAsync(StateHasChanged);
+                if (p.IsTerminal)
+                {
+                    _isAutomationRunning = false;
+                    _isAutomationSuccess = p.State == BrowserAuthState.BrowserSessionObserved;
+                }
+
+                _ = InvokeAsync(StateHasChanged);
             });
 
-            var result = await BrowserAuth.AutoLoginAsync(
+            var result = await CleanBrowserRelogin.ExecuteAsync(
                 accountId,
-                credentialRotationAttested: true,
                 progress: progress,
                 cancellationToken: _automationCts.Token);
 
             if (result.IsSuccess)
             {
                 _automationStage = "Thành công";
-                _automationStatusMessage = "Đăng nhập và xác thực phiên thành công!";
-                _automationTechnicalDetail = $"Session State: {result.State}";
+                _automationStatusMessage = result.Message;
+                _automationTechnicalDetail = result.CandidateProfile is null
+                    ? $"Trạng thái xác thực: {result.State}"
+                    : "Profile mới được giữ theo chính sách candidate; profile cũ vẫn còn nguyên.";
                 _isAutomationRunning = false;
                 _isAutomationSuccess = true;
                 await RefreshDataAsync();
             }
             else
             {
-                _automationStage = "Cần thao tác";
+                _automationStage = FormatAutomationStage(result.State.ToString(), result.State);
                 _automationStatusMessage = result.Message;
-                _automationTechnicalDetail = $"Trạng thái xác thực: {result.Status} ({result.State})";
+                _automationTechnicalDetail = $"Mã an toàn: {result.Status}; profile cũ được giữ nguyên.";
                 _isAutomationRunning = false;
                 _isAutomationSuccess = false;
             }
@@ -693,15 +1137,35 @@
     private void CancelAutomation()
     {
         _automationCts?.Cancel();
-        _isAutomationRunning = false;
-        _automationStatusMessage = "Thao tác đã được người dùng hủy.";
-        _automationStage = "Đã hủy";
+        _automationStatusMessage = "Đang gửi yêu cầu hủy tới quy trình browser...";
+        _automationStage = "Đang hủy";
         StateHasChanged();
     }
+
+    private static string FormatAutomationStage(string stage, BrowserAuthState state)
+        => stage switch
+        {
+            "ValidatingInput" => "Đang chuẩn bị trình duyệt",
+            "BrowserStarted" or "OpeningBrowser" => "Đang mở Chromium",
+            "OpeningLogin" or "Navigating" => "Đang truy cập trang đăng nhập",
+            "FillingEmail" => "Đang nhập email",
+            "FillingPassword" => "Đang xác thực mật khẩu",
+            "FillingTotp" or "SubmittingTotp" => "Đang gửi mã xác thực hai bước",
+            "ObservingPostLogin" or "CheckingAuthenticatedSession" => "Đang kiểm tra kết quả đăng nhập",
+            "ConfirmingBrowserSession" => "Đã xác nhận phiên đăng nhập",
+            "WaitingForUser" => "Cần xác minh thêm",
+            "TimedOut" => "Không thể xác minh trong thời gian cho phép",
+            "Cancelled" => "Đã hủy",
+            _ when state == BrowserAuthState.BrowserSessionObserved => "Đã hoàn tất",
+            _ when state == BrowserAuthState.TimedOut => "Không thể xác minh trong thời gian cho phép",
+            _ when state == BrowserAuthState.Cancelled => "Đã hủy",
+            _ => stage
+        };
 
     public ValueTask DisposeAsync()
     {
         _automationCts?.Dispose();
+        _activitySubscription?.Dispose();
         return ValueTask.CompletedTask;
     }
 }

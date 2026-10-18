@@ -1029,6 +1029,11 @@ public sealed class PlaywrightBrowserAuthenticationSession : IBrowserAuthenticat
             return BrowserPageState.InvalidCredentials;
         }
 
+        if (Matches(bodyText, "invalid authenticator code|invalid verification code|incorrect verification code|verification code is incorrect|invalid one-time code|mã xác thực không đúng|mã xác minh không đúng"))
+        {
+            return BrowserPageState.MfaRequired;
+        }
+
         // Guest landing pages can expose a chat composer and "New chat" text.
         // Require an account-specific marker before reporting authentication.
         if (Matches(bodyText, "log out|sign out|account settings|manage account|my account|đăng xuất|cài đặt tài khoản|quản lý tài khoản|tài khoản của tôi"))

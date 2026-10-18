@@ -100,6 +100,42 @@ public sealed class Be02SecurityTests
         Assert.Equal("synthetic-backup-value", Encoding.UTF8.GetString(restored!.Value.Span));
     }
 
+    [Fact]
+    public async Task FileSecretVaultRoundTripsAfterProviderAndVaultRestart()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "flash-router-be02-restart-" + Guid.NewGuid().ToString("N"));
+        var keyRing = Path.Combine(root, "keys");
+        var vaultDirectory = Path.Combine(root, "vault");
+        try
+        {
+            var firstProvider = DataProtectionProvider.Create(
+                new DirectoryInfo(keyRing),
+                builder => builder.SetApplicationName("FLASH ROUTER BE-02 RESTART TEST"));
+            using ((firstProvider as IDisposable)!)
+            using (var firstVault = new FileSecretVault(vaultDirectory, firstProvider))
+            {
+                await firstVault.StoreAsync("restart/key", Encoding.UTF8.GetBytes("synthetic-restart-value"));
+            }
+
+            var secondProvider = DataProtectionProvider.Create(
+                new DirectoryInfo(keyRing),
+                builder => builder.SetApplicationName("FLASH ROUTER BE-02 RESTART TEST"));
+            using ((secondProvider as IDisposable)!)
+            using (var secondVault = new FileSecretVault(vaultDirectory, secondProvider))
+            {
+                var restored = await secondVault.ReadAsync("restart/key");
+                Assert.Equal("synthetic-restart-value", Encoding.UTF8.GetString(restored!.Value.Span));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     [Theory]
     [InlineData(59, "94287082")]
     [InlineData(1111111109, "07081804")]

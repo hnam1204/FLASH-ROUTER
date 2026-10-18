@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.ComponentModel;
+using System.Collections.Concurrent;
 using FlashAI.Modules.Connections.Contracts;
 using Microsoft.Extensions.Configuration;
 
@@ -40,10 +41,11 @@ public sealed class ChromeExecutableResolver : IChromeExecutableResolver
 }
 
 public sealed class ChromeProcessLauncher : IChromeProcessLauncher
-    , IChromeProcessLauncherDiagnostics, IDisposable
+    , IChromeProcessLauncherDiagnostics, IChromeProcessController, IDisposable
 {
     private readonly IBrowserProfileOwnershipCoordinator _ownership;
     private readonly bool _ownsOwnership;
+    private readonly ConcurrentDictionary<string, TrackedProcess> _processes = new(StringComparer.OrdinalIgnoreCase);
 
     public ChromeProcessLauncher(IBrowserProfileOwnershipCoordinator? ownership = null)
     {
@@ -106,7 +108,7 @@ public sealed class ChromeProcessLauncher : IChromeProcessLauncher
             startInfo.ArgumentList.Add("--disable-sync");
             startInfo.ArgumentList.Add(officialUrl);
 
-            using var process = Process.Start(startInfo);
+            var process = Process.Start(startInfo);
             if (process is null)
             {
                 lease.Dispose();
@@ -114,10 +116,20 @@ public sealed class ChromeProcessLauncher : IChromeProcessLauncher
             }
 
             process.EnableRaisingEvents = true;
-            process.Exited += (_, _) => lease.Dispose();
+            var canonicalPath = Path.GetFullPath(profileDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var tracked = new TrackedProcess(canonicalPath, process, lease);
+            if (!_processes.TryAdd(canonicalPath, tracked))
+            {
+                process.Dispose();
+                lease.Dispose();
+                return Failure("PROFILE_IN_USE", "Profile Chrome đang được sử dụng bởi một phiên đã được quản lý.");
+            }
+
+            process.Exited += (_, _) => ReleaseTracked(canonicalPath, process);
             if (process.HasExited)
             {
-                lease.Dispose();
+                ReleaseTracked(canonicalPath, process);
                 return Failure("BROWSER_EXITED_EARLY", "Chrome đã đóng ngay sau khi khởi động.");
             }
 
@@ -147,11 +159,90 @@ public sealed class ChromeProcessLauncher : IChromeProcessLauncher
         }
     }
 
+    public bool IsRunning(string profileDirectory)
+    {
+        var key = Canonicalize(profileDirectory);
+        return key is not null
+            && _processes.TryGetValue(key, out var tracked)
+            && !tracked.Process.HasExited;
+    }
+
+    public bool TryClose(string profileDirectory, out string? safeError)
+    {
+        safeError = null;
+        var key = Canonicalize(profileDirectory);
+        if (key is null || !_processes.TryGetValue(key, out var tracked))
+        {
+            return true;
+        }
+
+        try
+        {
+            if (tracked.Process.HasExited)
+            {
+                ReleaseTracked(key, tracked.Process);
+                return true;
+            }
+
+            if (!tracked.Process.CloseMainWindow())
+            {
+                safeError = "Không thể gửi yêu cầu đóng tới cửa sổ Chrome thuộc profile này.";
+                return false;
+            }
+
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            ReleaseTracked(key, tracked.Process);
+            return true;
+        }
+        catch (Win32Exception)
+        {
+            safeError = "Windows không thể gửi yêu cầu đóng tới Chrome thuộc profile này.";
+            return false;
+        }
+    }
+
+    private void ReleaseTracked(string canonicalPath, Process process)
+    {
+        if (_processes.TryRemove(canonicalPath, out var removed))
+        {
+            removed.Lease.Dispose();
+            removed.Process.Dispose();
+        }
+    }
+
+    private static string? Canonicalize(string? profileDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(profileDirectory))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Path.GetFullPath(profileDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record TrackedProcess(string ProfileDirectory, Process Process, IDisposable Lease);
+
     private static ChromeLaunchResult Failure(string status, string message)
         => new(false, status, message);
 
     public void Dispose()
     {
+        foreach (var pair in _processes.ToArray())
+        {
+            ReleaseTracked(pair.Key, pair.Value.Process);
+        }
+
         if (_ownsOwnership && _ownership is IDisposable disposable)
         {
             disposable.Dispose();

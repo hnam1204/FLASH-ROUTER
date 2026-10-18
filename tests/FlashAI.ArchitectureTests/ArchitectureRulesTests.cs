@@ -167,7 +167,11 @@ public sealed class ArchitectureRulesTests
             .Select(File.ReadAllText));
 
         Assert.DoesNotContain("2fa.live", source, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("passwords", source, StringComparison.OrdinalIgnoreCase);
+        // Match the standalone prohibited phrase; event identifiers such as
+        // PasswordStepDetected are not credential storage or bulk-export code.
+        Assert.DoesNotMatch(
+            new Regex(@"(?<![A-Za-z])passwords(?![A-Za-z])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
+            source);
         Assert.DoesNotContain("bulk login", source, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("AccountCheckService", source, StringComparison.OrdinalIgnoreCase);
     }

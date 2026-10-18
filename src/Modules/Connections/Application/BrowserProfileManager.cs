@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FlashAI.Modules.Connections.Application;
 
-public sealed class BrowserProfileManager : IBrowserProfileManager, IDisposable
+public sealed class BrowserProfileManager : IBrowserProfileManager, IBrowserProfilePromotionService, IDisposable
 {
     private const string BrowserKind = "Chrome";
     private readonly IDbContextFactory<FlashAiDbContext> _contextFactory;
@@ -151,6 +151,98 @@ public sealed class BrowserProfileManager : IBrowserProfileManager, IDisposable
         await context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<BrowserProfilePromotionResult> PromoteCandidateAsync(
+        Guid accountId,
+        BrowserProfileSessionContext candidate,
+        CancellationToken cancellationToken = default)
+    {
+        if (accountId == Guid.Empty || candidate.AccountId != Guid.Empty && candidate.AccountId != accountId)
+        {
+            return BrowserProfilePromotionResult.Failure(
+                "PROFILE_CANDIDATE_ACCOUNT_MISMATCH",
+                "Hồ sơ ứng viên không thuộc tài khoản đang xác thực.");
+        }
+
+        if (!IsAllowedProvider(candidate.ProviderId)
+            || !candidate.ProviderId.Equals("openai-chatgpt", StringComparison.OrdinalIgnoreCase))
+        {
+            return BrowserProfilePromotionResult.Failure(
+                "PROFILE_CANDIDATE_PROVIDER_NOT_ALLOWED",
+                "Chỉ cho phép promotion hồ sơ ChatGPT được quản lý.");
+        }
+
+        var directory = Path.GetFullPath(candidate.ProfileDirectory);
+        if (!IsManagedDirectory(directory) || !Directory.Exists(directory))
+        {
+            return BrowserProfilePromotionResult.Failure(
+                "PROFILE_CANDIDATE_PATH_INVALID",
+                "Hồ sơ ứng viên không nằm trong vùng quản lý an toàn hoặc không còn tồn tại.");
+        }
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            if (!await AccountExistsAsync(context, accountId, cancellationToken))
+            {
+                return BrowserProfilePromotionResult.Failure(
+                    "ACCOUNT_NOT_FOUND",
+                    "Tài khoản không tồn tại hoặc đã được lưu trữ.");
+            }
+
+            var activeBinding = await context.Set<BrowserProfileBindingRecord>()
+                .SingleOrDefaultAsync(item => item.AccountId == accountId
+                    && item.ProviderId == candidate.ProviderId
+                    && item.BrowserKind == BrowserKind
+                    && item.State != BrowserProfileState.Archived.ToString(), cancellationToken);
+
+            if (activeBinding?.Id == candidate.BindingId)
+            {
+                return new BrowserProfilePromotionResult(true, "PROFILE_ALREADY_AUTHORITATIVE", "Hồ sơ ứng viên đã là hồ sơ chính.", ToViewModel(activeBinding));
+            }
+
+            var duplicate = await context.Set<BrowserProfileBindingRecord>()
+                .AnyAsync(item => item.Id == candidate.BindingId
+                    || item.ProfileDirectoryReference == directory, cancellationToken);
+            if (duplicate)
+            {
+                return BrowserProfilePromotionResult.Failure(
+                    "PROFILE_CANDIDATE_ALREADY_REGISTERED",
+                    "Hồ sơ ứng viên đã được đăng ký hoặc đang trùng với một liên kết khác.");
+            }
+
+            await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+            activeBinding?.Archive();
+            var promoted = new BrowserProfileBindingRecord(
+                candidate.BindingId,
+                accountId,
+                candidate.ProviderId,
+                BrowserKind,
+                candidate.OpaqueProfileIdentifier,
+                directory,
+                candidate.Binding.CreatedAtUtc);
+            context.Add(promoted);
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return new BrowserProfilePromotionResult(
+                true,
+                "PROFILE_PROMOTION_COMMITTED",
+                "Hồ sơ ứng viên đã được ghi nhận làm hồ sơ chính; hồ sơ cũ vẫn được giữ nguyên.",
+                ToViewModel(promoted));
+        }
+        catch (DbUpdateException)
+        {
+            return BrowserProfilePromotionResult.Failure(
+                "PROFILE_PROMOTION_SAVE_FAILED",
+                "Không thể ghi promotion hồ sơ ứng viên vào SQLite; hồ sơ cũ vẫn được giữ nguyên.");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task<BrowserProfileBindingRecord> CreateBindingAsync(
         FlashAiDbContext context,
         Guid accountId,
@@ -178,11 +270,17 @@ public sealed class BrowserProfileManager : IBrowserProfileManager, IDisposable
 
     private bool IsManagedDirectory(string directory)
     {
-        var root = GetProfileRoot();
         var fullDirectory = Path.GetFullPath(directory);
         var comparison = StringComparison.OrdinalIgnoreCase;
-        return fullDirectory.StartsWith(root + Path.DirectorySeparatorChar, comparison)
-            && !HasReparsePointBetween(root, fullDirectory);
+        var roots = new[]
+        {
+            GetProfileRoot(),
+            Path.GetFullPath(_paths.AutomationBrowserProfiles)
+        };
+
+        return roots.Any(root =>
+            fullDirectory.StartsWith(root + Path.DirectorySeparatorChar, comparison)
+            && !HasReparsePointBetween(root, fullDirectory));
     }
 
     private static bool HasReparsePointBetween(string root, string directory)

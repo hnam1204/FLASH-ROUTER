@@ -6,6 +6,26 @@ public sealed record ChatGptCredentialInput(
     string? TotpSeed,
     bool OpenBrowserAfterSave);
 
+public enum CredentialPasswordUpdate
+{
+    Keep,
+    Replace
+}
+
+public enum CredentialTotpUpdate
+{
+    Keep,
+    Replace,
+    Remove
+}
+
+public sealed record CredentialUpdateInput(
+    string Email,
+    CredentialPasswordUpdate PasswordAction,
+    string? ReplacementPassword,
+    CredentialTotpUpdate TotpAction,
+    string? ReplacementTotpSeed);
+
 public sealed record StoredChatGptCredential(
     string Email,
     string Password,
@@ -35,6 +55,11 @@ public interface IAccountCredentialUiPort
         Guid accountId,
         ChatGptCredentialInput input,
         CancellationToken cancellationToken = default);
+
+    Task<CredentialConnectionResult> UpdateAsync(
+        Guid accountId,
+        CredentialUpdateInput input,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record AccountCopyResult(
@@ -58,6 +83,12 @@ public interface IAccountCopyUiPort
     Task<AccountCopyResult> CopySavedCredentialsAsync(
         Guid accountId,
         bool confirmed,
+        CancellationToken cancellationToken = default);
+
+    Task RecordClipboardOutcomeAsync(
+        Guid accountId,
+        bool succeeded,
+        string? errorCode = null,
         CancellationToken cancellationToken = default);
 }
 

@@ -4,6 +4,7 @@ using System.Text.Json;
 using FlashAI.Foundation.Persistence;
 using FlashAI.Foundation.Security;
 using FlashAI.Modules.Connections.Contracts;
+using FlashAI.Modules.Connections.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace FlashAI.Modules.Connections.Application;
@@ -44,16 +45,14 @@ public sealed class BrowserAuthCredentialReader
     private const string ProviderId = "openai-chatgpt";
     private readonly IDbContextFactory<FlashAiDbContext> _contextFactory;
     private readonly ISecretVault _vault;
-    private readonly IVaultAccessState _vaultAccess;
 
     public BrowserAuthCredentialReader(
         IDbContextFactory<FlashAiDbContext> contextFactory,
         ISecretVault vault,
-        IVaultAccessState vaultAccess)
+        IVaultAccessState? vaultAccess = null)
     {
         _contextFactory = contextFactory;
         _vault = vault;
-        _vaultAccess = vaultAccess;
     }
 
     public async Task<string?> GetAccountEmailAsync(
@@ -89,18 +88,6 @@ public sealed class BrowserAuthCredentialReader
         }
 
         var reference = await FindReferenceAsync(accountId, ProviderId, cancellationToken);
-        if (!_vaultAccess.IsUnlocked)
-        {
-            return new BrowserAuthCredentialReadiness(
-                false,
-                "VAULT_LOCKED",
-                "Hãy mở khóa Vault trước khi cho phép Auto Login.",
-                accountEmail,
-                BrowserAuthCredentialReadinessKind.VaultLocked,
-                reference?.ConnectionId,
-                reference?.CredentialReferenceId);
-        }
-
         if (reference is null)
         {
             var otherProviderReference = await FindAnyReferenceAsync(accountId, cancellationToken);
@@ -119,6 +106,18 @@ public sealed class BrowserAuthCredentialReader
                     "Tài khoản này chưa có credential ChatGPT đã lưu trong Vault.",
                     accountEmail,
                     BrowserAuthCredentialReadinessKind.CredentialReferenceMissing);
+        }
+
+        if (!IsCurrentProtection(reference))
+        {
+            return new BrowserAuthCredentialReadiness(
+                false,
+                "LEGACY_UNLOCK_REQUIRED",
+                "Credential dùng protection format cũ; cần migration hoặc thay credential trước khi đăng nhập tự động.",
+                accountEmail,
+                BrowserAuthCredentialReadinessKind.LegacyUnlockRequired,
+                reference.ConnectionId,
+                reference.CredentialReferenceId);
         }
 
         try
@@ -169,14 +168,15 @@ public sealed class BrowserAuthCredentialReader
                 CryptographicOperations.ZeroMemory(bytes);
             }
         }
-        catch (SecretVaultException)
+        catch (SecretVaultException exception)
         {
+            var failure = CredentialProtectionFailure.From(exception);
             return new BrowserAuthCredentialReadiness(
                 false,
-                "CREDENTIAL_READ_FAILURE",
-                "Không thể đọc credential từ Vault hiện tại.",
+                failure.Status,
+                failure.Message,
                 accountEmail,
-                BrowserAuthCredentialReadinessKind.CredentialReadFailure,
+                CredentialProtectionFailure.ReadinessKind(failure.Status),
                 reference.ConnectionId,
                 reference.CredentialReferenceId);
         }
@@ -213,11 +213,11 @@ public sealed class BrowserAuthCredentialReader
                 accountEmail);
         }
 
-        if (!_vaultAccess.IsUnlocked)
+        if (!IsCurrentProtection(reference))
         {
             return StoredChatGptCredentialReadResult.Failure(
-                "VAULT_LOCKED",
-                "Hãy mở khóa Vault trước khi điền thông tin nhạy cảm.",
+                "LEGACY_UNLOCK_REQUIRED",
+                "Credential dùng protection format cũ; cần migration hoặc thay credential trước khi đăng nhập tự động.",
                 accountEmail,
                 reference.ConnectionId,
                 reference.CredentialReferenceId);
@@ -228,11 +228,12 @@ public sealed class BrowserAuthCredentialReader
         {
             payload = await _vault.ReadAsync(reference.VaultKey, cancellationToken);
         }
-        catch (SecretVaultException)
+        catch (SecretVaultException exception)
         {
+            var failure = CredentialProtectionFailure.From(exception);
             return StoredChatGptCredentialReadResult.Failure(
-                "CREDENTIAL_READ_FAILURE",
-                "Không thể đọc credential từ Vault hiện tại.",
+                failure.Status,
+                failure.Message,
                 accountEmail,
                 reference.ConnectionId,
                 reference.CredentialReferenceId);
@@ -287,7 +288,8 @@ public sealed class BrowserAuthCredentialReader
         var connection = await OpenConnectionAsync(context, cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT connections.Id, connections.ProviderId, credentialReferences.Id, credentialReferences.VaultKey
+            SELECT connections.Id, connections.ProviderId, credentialReferences.Id, credentialReferences.VaultKey,
+                   credentialReferences.ProtectionScheme, credentialReferences.ProtectionFormatVersion
             FROM ProviderCredentialReferences AS credentialReferences
             INNER JOIN ProviderConnections AS connections ON connections.Id = credentialReferences.ConnectionId
             WHERE connections.AccountId = $accountId
@@ -312,7 +314,8 @@ public sealed class BrowserAuthCredentialReader
         var connection = await OpenConnectionAsync(context, cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT connections.Id, connections.ProviderId, credentialReferences.Id, credentialReferences.VaultKey
+            SELECT connections.Id, connections.ProviderId, credentialReferences.Id, credentialReferences.VaultKey,
+                   credentialReferences.ProtectionScheme, credentialReferences.ProtectionFormatVersion
             FROM ProviderCredentialReferences AS credentialReferences
             INNER JOIN ProviderConnections AS connections ON connections.Id = credentialReferences.ConnectionId
             WHERE connections.AccountId = $accountId
@@ -340,8 +343,16 @@ public sealed class BrowserAuthCredentialReader
             reader.GetGuid(0),
             reader.GetString(1),
             reader.GetGuid(2),
-            reader.GetString(3));
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetInt32(5));
     }
+
+    private static bool IsCurrentProtection(CredentialReferenceMetadata reference)
+        => reference.ProtectionFormatVersion == CredentialProtectionMetadata.CurrentFormatVersion
+            && reference.ProtectionScheme.Equals(
+                CredentialProtectionMetadata.CurrentScheme,
+                StringComparison.Ordinal);
 
     private static bool TryReadCredential(
         byte[] bytes,
@@ -405,5 +416,7 @@ public sealed class BrowserAuthCredentialReader
         Guid ConnectionId,
         string ProviderId,
         Guid CredentialReferenceId,
-        string VaultKey);
+        string VaultKey,
+        string ProtectionScheme,
+        int ProtectionFormatVersion);
 }

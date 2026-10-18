@@ -1,6 +1,7 @@
+using FoundationAuditSink = FlashAI.Foundation.Contracts.IAuditSink;
+
 namespace FlashAI.Modules.Activity.Contracts;
 
-public interface IAuditSink
+public interface IAuditSink : FoundationAuditSink
 {
-    ValueTask WriteAsync(string eventType, string safeSummary, CancellationToken cancellationToken = default);
 }

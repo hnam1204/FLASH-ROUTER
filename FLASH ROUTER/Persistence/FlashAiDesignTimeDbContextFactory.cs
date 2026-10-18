@@ -1,6 +1,7 @@
 using FlashAI.Foundation.Persistence;
 using FlashAI.Modules.Accounts.Persistence;
 using FlashAI.Modules.Connections.Persistence;
+using FlashAI.Modules.Activity.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -19,6 +20,6 @@ public sealed class FlashAiDesignTimeDbContextFactory : IDesignTimeDbContextFact
 
         return new FlashAiDbContext(
             options,
-            [new AccountModelContributor(), new ConnectionModelContributor()]);
+            [new AccountModelContributor(), new ConnectionModelContributor(), new ActivityModelContributor()]);
     }
 }

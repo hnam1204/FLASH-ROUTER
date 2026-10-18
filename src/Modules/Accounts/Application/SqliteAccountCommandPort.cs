@@ -11,11 +11,16 @@ public sealed class SqliteAccountCommandPort : IAccountCommandPort
 {
     private readonly IDbContextFactory<FlashAiDbContext> _contextFactory;
     private readonly IClock _clock;
+    private readonly IAuditSink? _auditSink;
 
-    public SqliteAccountCommandPort(IDbContextFactory<FlashAiDbContext> contextFactory, IClock clock)
+    public SqliteAccountCommandPort(
+        IDbContextFactory<FlashAiDbContext> contextFactory,
+        IClock clock,
+        IAuditSink? auditSink = null)
     {
         _contextFactory = contextFactory;
         _clock = clock;
+        _auditSink = auditSink;
     }
 
     public async Task<OperationResultVm> CreateAccountAsync(AccountEditorVm model, CancellationToken cancellationToken = default)
@@ -124,6 +129,7 @@ public sealed class SqliteAccountCommandPort : IAccountCommandPort
         context.Add(account);
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await RecordAuditAsync(account.Id, "AccountCreated", "Account profile created in local SQLite.", "Info");
         return OperationResultVm.Success("Đã tạo tài khoản và lưu vào SQLite.");
     }
 
@@ -185,7 +191,25 @@ public sealed class SqliteAccountCommandPort : IAccountCommandPort
         context.Entry(account).Property(x => x.Version).OriginalValue = originalVersion;
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await RecordAuditAsync(account.Id, "AccountProfileUpdated", "Account profile updated in local SQLite.", "Info");
         return OperationResultVm.Success("Đã lưu thay đổi vào SQLite.");
+    }
+
+    private async Task RecordAuditAsync(Guid accountId, string eventType, string summary, string severity)
+    {
+        if (_auditSink is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _auditSink.WriteAsync(accountId, eventType, summary, severity);
+        }
+        catch
+        {
+            // Audit persistence must not roll back an already committed account command.
+        }
     }
 
     private async Task<OperationResultVm> ToggleFavoriteCoreAsync(Guid accountId, CancellationToken cancellationToken)

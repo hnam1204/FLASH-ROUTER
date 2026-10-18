@@ -55,6 +55,17 @@ window.flashRouter = {
             element.scrollTop = element.scrollHeight;
         }
     },
+    downloadTextFile: function (fileName, text, mimeType) {
+        const blob = new Blob([text], { type: mimeType || 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = fileName || 'flash-router-log.txt';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+    },
     setupKeyboardShortcuts: function (dotNetHelper) {
         window.addEventListener('keydown', function (e) {
             if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {

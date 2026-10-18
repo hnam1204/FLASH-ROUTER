@@ -36,7 +36,8 @@ public sealed class EphemeralCredentialContext : IDisposable
 
 public sealed record EphemeralBrowserAuthRequest(
     EphemeralCredentialContext Credential,
-    BrowserSessionMode SessionMode);
+    BrowserSessionMode SessionMode,
+    Guid AccountId = default);
 
 public sealed record ConsoleProviderOption(
     string Id,
@@ -65,6 +66,14 @@ public interface IEphemeralBrowserAuthOrchestrator
 {
     Task<BrowserAuthResult> AutoLoginAsync(
         EphemeralBrowserAuthRequest request,
+        IProgress<BrowserAuthProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+}
+
+public interface ICleanBrowserReloginService
+{
+    Task<BrowserAuthResult> ExecuteAsync(
+        Guid accountId,
         IProgress<BrowserAuthProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }

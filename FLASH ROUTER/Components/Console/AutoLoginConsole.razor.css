@@ -1,55 +1,40 @@
-/* ==========================================================================
-   FLASH ROUTER — MASTER ACCOUNT MANAGEMENT CONSOLE
-   Full 3-column SaaS dashboard layout matching reference UI screenshot.
-   Conforms to clean modern system typography.
-   ========================================================================== */
-
 .master-app-shell {
-    display: flex;
-    min-height: 100vh;
-    background: var(--app-bg);
+    min-height: 100dvh;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(53, 197, 219, 0.08), transparent 32rem),
+        var(--app-bg);
     color: var(--text-primary);
     overflow-x: hidden;
-    position: relative;
 }
 
 .master-workspace {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
     min-width: 0;
-    background: var(--app-bg);
 }
 
 .console-body-layout {
     display: grid;
-    grid-template-columns: 1fr var(--inspector-width);
-    min-height: calc(100vh - var(--topbar-height));
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 27vw);
+    min-height: calc(100dvh - var(--topbar-height));
     background: var(--app-console);
-    position: relative;
+    align-items: start;
 }
 
 .main-console-content {
-    padding: 28px 32px 48px;
-    background: var(--app-bg);
     min-width: 0;
-    overflow-y: auto;
+    padding: clamp(24px, 3vw, 44px) clamp(20px, 3.2vw, 56px) 56px;
+    background: var(--app-surface);
 }
 
-/* Page Header matching reference screenshot */
 .console-page-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 24px;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
+    gap: 28px;
+    margin-bottom: 30px;
 }
 
 .page-title-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    min-width: 0;
 }
 
 .title-with-badge {
@@ -60,101 +45,308 @@
 }
 
 .page-title {
-    font-size: var(--font-heading);
-    font-weight: 700;
-    letter-spacing: -0.6px;
-    color: var(--text-primary);
     margin: 0;
-    line-height: 1.2;
+    color: var(--text-primary);
+    font-size: clamp(25px, 2.3vw, 32px);
+    font-weight: 750;
+    letter-spacing: -0.9px;
+    line-height: 1.12;
 }
 
 .console-badge {
     display: inline-flex;
     align-items: center;
-    padding: 2px 8px;
-    background: var(--app-surface);
-    border: 1px solid var(--app-border);
+    min-height: 24px;
+    padding: 0 9px;
+    border: 1px solid rgba(53, 197, 219, 0.34);
     border-radius: var(--radius-pill);
-    font-size: 11px;
-    font-weight: 600;
     color: var(--accent-primary);
+    background: rgba(53, 197, 219, 0.08);
+    font-size: 11px;
+    font-weight: 700;
     letter-spacing: 0.2px;
 }
 
 .page-subtitle {
-    font-size: 13.5px;
-    color: var(--text-muted);
-    margin: 0;
-    line-height: 1.45;
-    max-width: 650px;
+    max-width: 670px;
+    margin: 10px 0 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.page-header-actions {
+    display: flex;
+    align-items: flex-end;
+    gap: 18px;
+    flex-shrink: 0;
+}
+
+.page-primary-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 18px;
+    border: 1px solid var(--accent-primary);
+    border-radius: var(--radius-md);
+    background: var(--accent-primary);
+    color: #07151c;
+    font-size: 13px;
+    font-weight: 750;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(53, 197, 219, 0.16);
+    transition: transform var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.page-primary-action:hover {
+    background: var(--accent-primary-hover);
+    box-shadow: 0 10px 24px rgba(53, 197, 219, 0.23);
+    transform: translateY(-1px);
+}
+
+.page-primary-action:active {
+    transform: translateY(1px) scale(0.99);
 }
 
 .page-header-meta {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 6px;
-    flex-shrink: 0;
+    gap: 5px;
+    min-width: max-content;
 }
 
 .system-time {
-    font-size: 12.5px;
-    font-weight: 500;
     color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
 }
 
 .system-status-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    font-weight: 600;
+    gap: 7px;
     color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 650;
 }
 
-.status-indicator-dot {
+.status-indicator-dot,
+.runtime-status-dot {
     width: 7px;
     height: 7px;
-    border-radius: var(--radius-pill);
+    border-radius: 50%;
     background: var(--text-muted);
+    flex-shrink: 0;
 }
 
-.status-indicator-dot.is-healthy {
-    background: #059669;
-    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.2);
+.status-indicator-dot.is-healthy,
+.runtime-status.is-healthy .runtime-status-dot {
+    background: var(--state-success);
+    box-shadow: 0 0 0 4px rgba(45, 221, 155, 0.12);
 }
 
-.status-indicator-dot.is-warning {
-    background: #D97706;
+.status-indicator-dot.is-warning,
+.runtime-status.is-warning .runtime-status-dot {
+    background: var(--state-warning);
+    box-shadow: 0 0 0 4px rgba(245, 185, 78, 0.12);
 }
 
-[data-theme="dark"] .status-indicator-dot.is-healthy {
-    background: #34D399;
-    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.2);
-}
+@media (max-width: 1320px) {
+    .console-body-layout {
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 34vw);
+    }
 
-/* Responsive Breakpoints */
-@media (max-width: 1400px) {
-    .main-console-content {
-        padding: 24px 20px 40px;
+    .page-header-actions {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 10px;
     }
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1120px) {
     .console-body-layout {
         grid-template-columns: 1fr;
     }
+
+    .account-inspector {
+        position: static;
+        width: auto;
+        max-height: none;
+        border-top: 1px solid var(--app-border);
+        border-left: 0;
+    }
 }
 
-@media (max-width: 768px) {
-    .console-page-header {
-        flex-direction: column;
-        align-items: flex-start;
+@media (max-width: 720px) {
+    .main-console-content {
+        padding: 22px 14px 36px;
     }
+
+    .console-page-header,
+    .page-header-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
     .page-header-meta {
         align-items: flex-start;
     }
-    .main-console-content {
-        padding: 16px 12px 32px;
+
+    .page-primary-action {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-primary-action {
+        transition: none;
+    }
+}
+.credential-copy-modal {
+    max-width: 520px;
+}
+
+.console-log-backdrop {
+    z-index: 40;
+}
+
+.console-log-modal {
+    width: min(1100px, calc(100vw - 40px));
+    height: min(760px, calc(100vh - 40px));
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-elevated, #101826);
+    border: 1px solid var(--border-subtle, rgba(148, 163, 184, .25));
+    border-radius: 16px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .42);
+    overflow: hidden;
+}
+
+.console-log-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 22px 24px 16px;
+    border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, .18));
+}
+
+.console-log-header h2 {
+    margin: 4px 0 4px;
+}
+
+.console-log-header p {
+    margin: 0;
+    color: var(--text-secondary, #a8b3c7);
+    font-size: 13px;
+}
+
+.console-log-context {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-top: 10px;
+    color: var(--text-muted, #718096);
+    font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.console-log-connection {
+    color: #50d890;
+}
+
+.console-log-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 24px;
+    background: rgba(148, 163, 184, .06);
+}
+
+.console-log-toolbar select,
+.console-log-toolbar input,
+.console-log-toolbar button {
+    border: 1px solid var(--border-subtle, rgba(148, 163, 184, .25));
+    border-radius: 7px;
+    padding: 8px 10px;
+    background: transparent;
+    color: inherit;
+}
+
+.console-log-toolbar input {
+    flex: 1 1 260px;
+}
+
+.console-log-toolbar button {
+    cursor: pointer;
+}
+
+.console-log-toolbar button.is-active {
+    border-color: rgba(80, 216, 144, .65);
+    color: #50d890;
+}
+
+.console-log-stream {
+    flex: 1;
+    overflow: auto;
+    padding: 12px 24px 24px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+}
+
+.console-log-line {
+    display: grid;
+    grid-template-columns: 38px 74px 56px 120px minmax(0, 1fr);
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, .08);
+}
+
+.console-log-index,
+.console-log-time,
+.console-log-source {
+    color: var(--text-muted, #718096);
+}
+
+.console-log-severity {
+    font-weight: 700;
+}
+
+.console-log-severity.success { color: #50d890; }
+.console-log-severity.warning { color: #f6c453; }
+.console-log-severity.error { color: #ff7d8b; }
+.console-log-severity.info { color: #77b8ff; }
+
+.console-log-message {
+    color: var(--text-primary, #edf3fa);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.console-log-line.compact-message .console-log-message {
+    grid-column: 4 / -1;
+}
+
+.console-log-empty {
+    padding: 40px 0;
+    color: var(--text-secondary, #a8b3c7);
+    text-align: center;
+}
+
+@media (max-width: 760px) {
+    .console-log-modal {
+        width: calc(100vw - 20px);
+        height: calc(100vh - 20px);
+    }
+
+    .console-log-line {
+        grid-template-columns: 34px 62px 52px minmax(0, 1fr);
+    }
+
+    .console-log-source {
+        display: none;
     }
 }

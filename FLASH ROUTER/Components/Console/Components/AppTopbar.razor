@@ -1,7 +1,14 @@
 @namespace FLASH_ROUTER.Components.Console.Components
 
 <header class="app-topbar" role="banner">
-    <!-- Left: Global Search Input -->
+    <div class="topbar-brand" aria-label="FLASH ROUTER">
+        <img class="topbar-brand-mark" src="assets/brands/flash-router.png" alt="" width="34" height="34" />
+        <div class="topbar-brand-copy">
+            <strong>FLASH ROUTER</strong>
+            <span>Account workspace</span>
+        </div>
+    </div>
+
     <div class="topbar-search-wrapper">
         <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="8"></circle>
@@ -12,32 +19,16 @@
                placeholder="Tìm kiếm account, email, nền tảng..."
                value="@SearchText"
                @oninput="HandleSearchInput"
+               autocomplete="off"
                aria-label="Tìm kiếm toàn hệ thống" />
     </div>
 
-    <!-- Right: Header Actions & User Profile -->
     <div class="topbar-actions">
-        <!-- Notification button -->
-        <button type="button" class="action-icon-btn" aria-label="Thông báo mới" title="Thông báo">
-            <div class="icon-indicator-wrapper">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                </svg>
-                <span class="red-badge-dot"></span>
-            </div>
-        </button>
+        <div class="runtime-status @(IsHealthy ? "is-healthy" : "is-warning")" role="status">
+            <span class="runtime-status-dot"></span>
+            <span>@StatusText</span>
+        </div>
 
-        <!-- Help button -->
-        <button type="button" class="action-icon-btn" aria-label="Trợ giúp" title="Trợ giúp">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                <line x1="12" y1="17" x2="12.01" y2="17"></line>
-            </svg>
-        </button>
-
-        <!-- Theme Toggle button (Crucial for test Console04UiRebuildTests: theme-toggle-btn) -->
         <button type="button"
                 class="action-icon-btn theme-toggle-btn"
                 @onclick="ToggleThemeAsync"
@@ -65,19 +56,6 @@
             }
         </button>
 
-        <!-- User Profile Menu -->
-        <div class="user-profile-menu">
-            <div class="user-avatar-badge" aria-hidden="true">
-                <span>N</span>
-            </div>
-            <div class="user-meta">
-                <span class="user-name">Nguyễn Minh</span>
-                <span class="user-role">Admin</span>
-            </div>
-            <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-        </div>
     </div>
 </header>
 
@@ -86,6 +64,8 @@
     [Parameter] public EventCallback<string> OnSearchChanged { get; set; }
     [Parameter] public string CurrentTheme { get; set; } = "dark";
     [Parameter] public EventCallback OnToggleTheme { get; set; }
+    [Parameter] public bool IsHealthy { get; set; }
+    [Parameter] public string StatusText { get; set; } = "Đang kiểm tra lưu trữ";
 
     private async Task HandleSearchInput(ChangeEventArgs e)
     {

@@ -22,6 +22,46 @@ public sealed record BrowserLaunchResult(
     string Message,
     BrowserProfileBindingVm? Binding = null);
 
+public enum AccountBrowserRuntimeState
+{
+    Closed,
+    Launching,
+    Open,
+    Closing,
+    Crashed,
+    Disconnected,
+    ProfileInUse,
+    Unknown
+}
+
+public sealed record BrowserRuntimeSnapshot(
+    Guid AccountId,
+    Guid? BrowserProfileBindingId,
+    string ProviderId,
+    AccountBrowserRuntimeState RuntimeState,
+    AuthenticationObservationStatus AuthenticationState,
+    IdentityVerificationStatus IdentityVerificationState,
+    DateTimeOffset ObservedAtUtc,
+    DateTimeOffset? RuntimeStartedAtUtc = null,
+    DateTimeOffset? LastClosedAtUtc = null,
+    DateTimeOffset? LastSessionObservedAtUtc = null,
+    DateTimeOffset? LastAuthenticatedSessionConfirmedAtUtc = null,
+    string EvidenceSource = "Current process reconciliation",
+    string? SanitizedFailureCode = null);
+
+public sealed record BrowserOperationResult(
+    bool IsSuccess,
+    string Status,
+    string Message,
+    BrowserRuntimeSnapshot Snapshot);
+
+public sealed record SessionObservationResult(
+    bool IsSuccess,
+    string Status,
+    string Message,
+    BrowserRuntimeSnapshot Snapshot,
+    AuthenticationObservationResult? Observation = null);
+
 public sealed record BrowserProfileSessionContext(
     Guid BindingId,
     Guid AccountId,
@@ -36,6 +76,16 @@ public sealed record BrowserProfilePreparationResult(
     string Status,
     string Message,
     BrowserProfileSessionContext? Context = null);
+
+public sealed record BrowserProfilePromotionResult(
+    bool IsSuccess,
+    string Status,
+    string Message,
+    BrowserProfileBindingVm? Binding = null)
+{
+    public static BrowserProfilePromotionResult Failure(string status, string message)
+        => new(false, status, message);
+}
 
 public enum BrowserProfileLifecycleState
 {
@@ -102,6 +152,46 @@ public interface IBrowserProfileUiPort
         CancellationToken cancellationToken = default);
 }
 
+public interface IAccountBrowserSessionManager
+{
+    Task<BrowserRuntimeSnapshot> GetStatusAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default);
+
+    Task<BrowserOperationResult> OpenAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default);
+
+    Task<BrowserOperationResult> CloseAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default);
+
+    Task<BrowserOperationResult> ReopenAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default);
+
+    Task<SessionObservationResult> CheckSessionAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default);
+
+    Task ReconcileAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IAccountBrowserSessionRegistration
+{
+    Task RegisterManagedSessionAsync(
+        Guid accountId,
+        Guid attemptId,
+        BrowserProfileSessionContext profile,
+        IBrowserAuthenticationSession session,
+        CancellationToken cancellationToken = default);
+
+    Task UnregisterManagedSessionAsync(
+        Guid accountId,
+        Guid attemptId,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IChromeExecutableResolver
 {
     string? Resolve();
@@ -149,6 +239,13 @@ public interface IChromeProcessLauncher
     bool TryLaunch(string executablePath, string profileDirectory, string officialUrl, out string? safeError);
 }
 
+public interface IChromeProcessController
+{
+    bool IsRunning(string profileDirectory);
+
+    bool TryClose(string profileDirectory, out string? safeError);
+}
+
 public interface IChromeProcessLauncherDiagnostics
 {
     ChromeLaunchResult TryLaunchDetailed(
@@ -172,5 +269,13 @@ public interface IBrowserProfileManager
     Task RecordLaunchResultAsync(
         Guid bindingId,
         bool succeeded,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IBrowserProfilePromotionService
+{
+    Task<BrowserProfilePromotionResult> PromoteCandidateAsync(
+        Guid accountId,
+        BrowserProfileSessionContext candidate,
         CancellationToken cancellationToken = default);
 }

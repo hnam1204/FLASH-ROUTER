@@ -86,6 +86,14 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
         Assert.Equal("BROWSER_SESSION_OBSERVED", observed.Status);
         Assert.NotNull(observed.Observation);
 
+        var accountReader = new SqliteAccountWorkspaceReader(_database.ContextFactory);
+        var persisted = await accountReader.GetAccountDetailAsync(accountA);
+        Assert.NotNull(persisted);
+        Assert.Equal("AuthenticatedSessionConfirmed", persisted!.AuthenticationState);
+        Assert.Equal("Unknown", persisted.IdentityVerificationState);
+        Assert.Equal(started.AttemptId, persisted.LastAuthenticationAttemptId);
+        Assert.NotNull(persisted.LastAuthenticatedSessionConfirmedAtUtc);
+
         var closed = await orchestrator.CancelAsync(started.AttemptId.Value);
         Assert.Equal(BrowserAuthState.Cancelled, closed.State);
 
@@ -361,8 +369,12 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
         RequireChrome();
         foreach (var scenario in new[]
         {
-            (Variant: "invalid-password", ExpectedState: BrowserAuthState.Unknown, ExpectedStatus: "UNKNOWN_LOGIN_STATE"),
-            (Variant: "invalid-totp", ExpectedState: BrowserAuthState.MfaRequired, ExpectedStatus: "MFA_REQUIRED")
+            // Invalid credentials are a classified human-recovery outcome, not an unknown DOM state.
+            (Variant: "invalid-password", ExpectedState: BrowserAuthState.HumanActionRequired, ExpectedStatus: "INVALID_CREDENTIALS"),
+            // The page detector reports MfaRequired, but after TOTP has already
+            // been submitted the orchestrator stops for human takeover so it
+            // cannot retry the same credential in a loop.
+            (Variant: "invalid-totp", ExpectedState: BrowserAuthState.WaitingForUser, ExpectedStatus: "ADDITIONAL_MFA_REQUIRED")
         })
         {
             var accountId = await CreateAccountAsync($"{scenario.Variant}@example.test", "SyntheticPassword-456");
@@ -389,6 +401,8 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
                 var totp = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillTotp, confirmed: true);
                 Assert.Equal(scenario.ExpectedState, totp.State);
                 Assert.Equal(scenario.ExpectedStatus, totp.Status);
+                Assert.False(totp.IsSuccess);
+                Assert.Null(totp.NextAction);
             }
 
             await orchestrator.CancelAsync(started.AttemptId.Value);
@@ -432,7 +446,8 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
             new StableBrowserPageStateDetector(originPolicy),
             new BrowserAuthCredentialReader(_database.ContextFactory, _vault, _vaultAccess),
             new Rfc6238TotpGenerator(),
-            originPolicy);
+            originPolicy,
+            authenticationStateStore: new SqliteAccountAuthenticationStateStore(_database.ContextFactory));
 
     private LocalPlaywrightSessionFactory CreateSessionFactory(
         Func<Uri?, bool> originPolicy,

@@ -26,6 +26,12 @@ namespace FLASHROUTER.Persistence.Migrations
                     b.Property<DateTimeOffset?>("ArchivedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AuthenticationState")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasDefaultValue("NotStarted")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ConnectionStatus")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -49,13 +55,45 @@ namespace FLASHROUTER.Persistence.Migrations
                         .HasMaxLength(254)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("IdentityVerificationState")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasDefaultValue("NotChecked")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsArchived")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsFavorite")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTimeOffset?>("LastAuthenticatedSessionConfirmedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastAuthenticationAttemptAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("LastAuthenticationAttemptId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastBrowserSessionObservedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("LastCheckedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastIdentityVerifiedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastObservationAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastObservationErrorCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastObservationEvidenceSource")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("LifecycleStatus")
@@ -156,6 +194,75 @@ namespace FLASHROUTER.Persistence.Migrations
                     b.HasIndex("NormalizedValue");
 
                     b.ToTable("AccountTags", (string)null);
+                });
+
+            modelBuilder.Entity("FlashAI.Modules.Activity.Domain.ActivityEventRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AttemptId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("DurationMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SafeDetails")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SafeSummary")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CorrelationId");
+
+                    b.HasIndex("AccountId", "OccurredAtUtc");
+
+                    b.HasIndex("AccountId", "AttemptId", "OccurredAtUtc");
+
+                    b.ToTable("ActivityEvents", (string)null);
                 });
 
             modelBuilder.Entity("FlashAI.Modules.Connections.Domain.BrowserProfileBindingRecord", b =>
@@ -523,6 +630,14 @@ namespace FLASHROUTER.Persistence.Migrations
                     b.Property<string>("CredentialKind")
                         .IsRequired()
                         .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProtectionFormatVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProtectionScheme")
+                        .IsRequired()
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProviderId")

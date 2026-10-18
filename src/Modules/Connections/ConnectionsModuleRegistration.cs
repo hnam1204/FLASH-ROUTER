@@ -67,12 +67,21 @@ public static class ConnectionsModuleRegistration
         services.AddSingleton<IChromeProfileLockInspector, ChromeProfileLockInspector>();
         services.AddSingleton<IBrowserProfileOwnershipCoordinator, BrowserProfileOwnershipCoordinator>();
         services.AddSingleton<IChromeProcessLauncher, ChromeProcessLauncher>();
-        services.AddSingleton<IBrowserProfileManager, BrowserProfileManager>();
+        services.AddSingleton<IAccountBrowserSessionManager, AccountBrowserSessionManager>();
+        services.AddSingleton<IAccountBrowserSessionRegistration>(serviceProvider =>
+            serviceProvider.GetRequiredService<IAccountBrowserSessionManager>() as IAccountBrowserSessionRegistration
+            ?? throw new InvalidOperationException("The account browser manager must support session registration."));
+        services.AddSingleton<BrowserProfileManager>();
+        services.AddSingleton<IBrowserProfileManager>(serviceProvider =>
+            serviceProvider.GetRequiredService<BrowserProfileManager>());
+        services.AddSingleton<IBrowserProfilePromotionService>(serviceProvider =>
+            serviceProvider.GetRequiredService<BrowserProfileManager>());
         services.AddSingleton<IEphemeralBrowserProfileFactory, EphemeralBrowserProfileFactory>();
         services.AddSingleton<IConsoleProviderRegistry, ConsoleProviderRegistry>();
         services.AddSingleton<IBrowserAuthenticationSessionFactory, PlaywrightBrowserAuthenticationSessionFactory>();
         services.AddSingleton<IBrowserPageStateDetector, StableBrowserPageStateDetector>();
         services.AddScoped<BrowserAuthCredentialReader>();
+        services.AddScoped<ICleanBrowserReloginService, CleanBrowserReloginService>();
         services.AddScoped<BrowserAuthOrchestrator>();
         services.AddScoped<PreviewBrowserAuthOrchestrator>();
         services.AddScoped<IBrowserAuthOrchestrator>(serviceProvider => integrated
@@ -141,13 +150,16 @@ public static class ConnectionsModuleRegistration
         services.AddSingleton<IProviderObservationReader>(serviceProvider =>
             (IProviderObservationReader)serviceProvider.GetRequiredService<IProviderObservationWriter>());
         services.AddSingleton<IConnectionObservationsReader, ConnectionObservationsReader>();
+        services.AddSingleton<IAccountUsageReader, AccountUsageReader>();
         services.AddSingleton<IProviderConnectionVerifier, ProviderConnectionVerifier>();
         services.AddSingleton<ProviderRateLimiter>();
         services.AddSingleton<IProviderSyncOrchestrator, ProviderSyncOrchestrator>();
+        services.AddSingleton<IProviderSyncStateStore, SqliteProviderSyncStateStore>();
         services.AddSingleton(new ProviderSyncOptions
         {
-            Enabled = bool.TryParse(configuration?["FlashAI:Connections:ProviderSync:Enabled"], out var syncEnabled) && syncEnabled,
-            Interval = TimeSpan.FromHours(6)
+            Enabled = !bool.TryParse(configuration?["FlashAI:Connections:ProviderSync:Enabled"], out var syncEnabled) || syncEnabled,
+            Interval = TimeSpan.FromSeconds(ParsePositiveInt(configuration?["FlashAI:Connections:ProviderSync:IntervalSeconds"], 60)),
+            AllowOfficialUsageReads = bool.TryParse(configuration?["FlashAI:Connections:ProviderSync:AllowOfficialUsageReads"], out var allowUsage) && allowUsage
         });
         services.AddHostedService<ProviderSyncScheduler>();
         services.AddSingleton<IFlashAiModelContributor, ConnectionModelContributor>();
@@ -176,4 +188,7 @@ public static class ConnectionsModuleRegistration
                 AllowAutoRedirect = false
             });
     }
+
+    private static int ParsePositiveInt(string? value, int fallback)
+        => int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
 }

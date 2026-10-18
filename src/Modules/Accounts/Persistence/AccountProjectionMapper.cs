@@ -18,7 +18,17 @@ public static class AccountProjectionMapper
         account.RecordedPlan,
         account.TrackingDateUtc,
         account.Tags.OrderBy(tag => tag.NormalizedValue).Select(tag => tag.Value).ToArray(),
-        account.IsArchived);
+        account.IsArchived,
+        account.AuthenticationState,
+        account.IdentityVerificationState,
+        account.LastAuthenticationAttemptAtUtc,
+        account.LastBrowserSessionObservedAtUtc,
+        account.LastAuthenticatedSessionConfirmedAtUtc,
+        account.LastIdentityVerifiedAtUtc,
+        account.LastObservationAtUtc,
+        account.LastObservationEvidenceSource,
+        account.LastObservationErrorCode,
+        account.LastAuthenticationAttemptId);
 
     public static AccountDetailVm ToDetail(AccountRecord account) => new(
         account.Id,
@@ -39,5 +49,15 @@ public static class AccountProjectionMapper
         account.RecordedBy,
         account.Tags.OrderBy(tag => tag.NormalizedValue).Select(tag => tag.Value).ToArray(),
         account.IsArchived,
-        account.Version);
+        account.Version,
+        account.AuthenticationState,
+        account.IdentityVerificationState,
+        account.LastAuthenticationAttemptAtUtc,
+        account.LastBrowserSessionObservedAtUtc,
+        account.LastAuthenticatedSessionConfirmedAtUtc,
+        account.LastIdentityVerifiedAtUtc,
+        account.LastObservationAtUtc,
+        account.LastObservationEvidenceSource,
+        account.LastObservationErrorCode,
+        account.LastAuthenticationAttemptId);
 }
