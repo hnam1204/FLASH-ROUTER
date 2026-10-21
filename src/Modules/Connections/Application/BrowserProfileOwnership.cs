@@ -135,9 +135,7 @@ public sealed class BrowserProfileOwnershipCoordinator : IBrowserProfileOwnershi
 
             return new BrowserProfileOwnershipResult(
                 true,
-                ownerKind == BrowserProfileOwnerKind.ManagedChrome
-                    ? BrowserProfileLifecycleState.OwnedByManagedChrome
-                    : BrowserProfileLifecycleState.OwnedByPlaywright,
+                GetLifecycleState(ownerKind),
                 ownerKind,
                 "PROFILE_ACQUIRED",
                 "Profile ownership acquired.",
@@ -148,12 +146,19 @@ public sealed class BrowserProfileOwnershipCoordinator : IBrowserProfileOwnershi
     private static BrowserProfileOwnershipResult InUse(BrowserProfileOwnerKind ownerKind)
         => new(
             false,
-            ownerKind == BrowserProfileOwnerKind.ManagedChrome
-                ? BrowserProfileLifecycleState.OwnedByManagedChrome
-                : BrowserProfileLifecycleState.OwnedByPlaywright,
+            GetLifecycleState(ownerKind),
             ownerKind,
             "PROFILE_IN_USE",
             "Chrome profile đang được FLASH ROUTER sử dụng. Hãy đóng phiên hiện tại trước khi thử lại.");
+
+    private static BrowserProfileLifecycleState GetLifecycleState(BrowserProfileOwnerKind ownerKind)
+        => ownerKind switch
+        {
+            BrowserProfileOwnerKind.ManagedChrome => BrowserProfileLifecycleState.OwnedByManagedChrome,
+            BrowserProfileOwnerKind.Playwright => BrowserProfileLifecycleState.OwnedByPlaywright,
+            BrowserProfileOwnerKind.PermanentDeletion => BrowserProfileLifecycleState.Deleting,
+            _ => BrowserProfileLifecycleState.InUseExternally
+        };
 
     private void Release(LeaseState state)
     {

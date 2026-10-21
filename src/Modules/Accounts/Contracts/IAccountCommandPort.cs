@@ -14,5 +14,4 @@ public interface IAccountCommandPort
 
     Task<OperationResultVm> RestoreAccountAsync(Guid accountId, CancellationToken cancellationToken = default);
 
-    Task<OperationResultVm> DeleteAccountAsync(Guid accountId, CancellationToken cancellationToken = default);
 }

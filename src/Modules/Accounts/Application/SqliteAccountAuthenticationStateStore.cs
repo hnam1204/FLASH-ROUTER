@@ -31,6 +31,17 @@ public sealed class SqliteAccountAuthenticationStateStore : IAccountAuthenticati
             return;
         }
 
+        // A late callback from an older browser attempt must never replace a
+        // newer account-owned authentication result. Updates from the same
+        // attempt remain allowed so its state can advance from MFA to verified.
+        if (account.LastAuthenticationAttemptAtUtc is { } lastAttemptAtUtc
+            && (update.AttemptedAtUtc < lastAttemptAtUtc
+                || update.AttemptedAtUtc == lastAttemptAtUtc
+                    && account.LastAuthenticationAttemptId != update.AttemptId))
+        {
+            return;
+        }
+
         // Unknown polling can observe the same state many times. Avoid a
         // needless row update when no durable authentication value changed.
         if (account.LastAuthenticationAttemptId == update.AttemptId

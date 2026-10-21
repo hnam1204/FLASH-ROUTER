@@ -6,6 +6,7 @@ public enum BrowserAuthState
     BrowserStarting,
     Navigating,
     ObservingPostLogin,
+    PostLoginPending,
     GuestLandingLoginAvailable,
     EmailRequired,
     PasswordRequired,
@@ -32,6 +33,7 @@ public enum AuthenticationObservationStatus
     Checking,
     BrowserSessionObserved,
     AuthenticatedSessionConfirmed,
+    PostLoginPending,
     LoginRequired,
     SessionExpired,
     Failed,
@@ -79,6 +81,96 @@ public enum UsageObservationStatus
     Failed,
     Stale
 }
+
+public enum ProviderAccountObservationField
+{
+    DisplayName,
+    Email,
+    Plan,
+    MfaConfiguration,
+    UsageQuota
+}
+
+public enum ProviderAccountObservationFieldStatus
+{
+    Observed,
+    Unavailable,
+    Unsupported,
+    Failed
+}
+
+public sealed record ProviderAccountFieldEvidence(
+    ProviderAccountObservationField Field,
+    string? Value,
+    string Source,
+    string EvidenceType,
+    string Confidence,
+    ProviderAccountObservationFieldStatus Status,
+    DateTimeOffset ObservedAtUtc,
+    string? FailureReasonCode = null);
+
+public sealed record ProviderAccountObservation(
+    Guid AccountId,
+    Guid AttemptId,
+    Guid BrowserProfileBindingId,
+    string ProviderId,
+    string BrowserContextId,
+    DateTimeOffset ObservedAtUtc,
+    string Locale,
+    bool AuthenticatedShellDetected,
+    bool AccountMenuDetected,
+    string ObservationStatus,
+    string EvidenceSurface,
+    string? FailureReasonCode,
+    ProviderAccountFieldEvidence DisplayName,
+    ProviderAccountFieldEvidence Email,
+    ProviderAccountFieldEvidence Plan,
+    ProviderAccountFieldEvidence MfaConfiguration,
+    ProviderAccountFieldEvidence UsageQuota);
+
+public sealed record ProviderAccountObservationSnapshot(
+    Guid ObservationId,
+    Guid AccountId,
+    Guid AttemptId,
+    Guid BrowserProfileBindingId,
+    string ProviderId,
+    string BrowserContextId,
+    DateTimeOffset ObservedAtUtc,
+    string Locale,
+    bool AuthenticatedShellDetected,
+    bool AccountMenuDetected,
+    string ObservationStatus,
+    string EvidenceSurface,
+    string? FailureReasonCode,
+    IReadOnlyList<ProviderAccountFieldEvidence> Fields);
+
+public sealed record ChatGptUsageWindowSnapshot(
+    decimal? UsedPercent,
+    long? LimitWindowSeconds,
+    DateTimeOffset? ResetAtUtc,
+    long? ResetAfterSeconds);
+
+public sealed record ChatGptWebUsageSnapshot(
+    string? PlanType,
+    ChatGptUsageWindowSnapshot? PrimaryWindow,
+    ChatGptUsageWindowSnapshot? SecondaryWindow,
+    DateTimeOffset ObservedAtUtc);
+
+public sealed record ChatGptUsageApiReadResult(
+    bool IsSuccess,
+    string Status,
+    string Message,
+    ChatGptWebUsageSnapshot? Snapshot = null,
+    string? VerifiedEmail = null);
+
+public sealed record AccountObservationResult(
+    bool IsSuccess,
+    string Status,
+    string Message,
+    BrowserRuntimeSnapshot Snapshot,
+    ProviderAccountObservationSnapshot? Observation = null,
+    IdentityVerificationStatus IdentityStatus = IdentityVerificationStatus.NotChecked,
+    bool LocalObservationPersisted = false);
 
 public enum BrowserAuthCredentialReadinessKind
 {
@@ -132,6 +224,18 @@ public enum BrowserPageState
     InvalidCredentials
 }
 
+public enum MfaObservationKind
+{
+    Unknown,
+    MfaFormUnchanged,
+    MfaSubmissionProcessing,
+    MfaValidationError,
+    AdditionalMfaChallenge,
+    HumanConfirmationRequired,
+    MfaResolved,
+    AuthenticatedShellObserved
+}
+
 public sealed record BrowserPageSnapshot(
     Uri CurrentUri,
     BrowserPageState State,
@@ -142,7 +246,10 @@ public sealed record BrowserPageSnapshot(
     int GuestLoginEntryCount = 0,
     bool IsPageReady = true,
     int EmailContinueActionCount = 0,
-    bool IsEmailModal = false)
+    bool IsEmailModal = false,
+    string? ObservationFailureCode = null,
+    string? ObservationFailureMessage = null,
+    MfaObservationKind MfaObservation = MfaObservationKind.Unknown)
 {
     public bool HasEmailContinueAction => EmailContinueActionCount == 1;
 }
@@ -278,7 +385,8 @@ public sealed record BrowserIdentityEvidence(
     string? ObservedDisplayName,
     string EvidenceSource,
     string? SafeReasonCode,
-    DateTimeOffset ObservedAtUtc);
+    DateTimeOffset ObservedAtUtc,
+    ProviderAccountObservation? AccountObservation = null);
 
 public sealed record ProviderIdentityVerificationRequest(
     Guid AccountId,
@@ -297,7 +405,8 @@ public sealed record ProviderIdentityVerificationResult(
     DateTimeOffset ObservedAtUtc,
     string EvidenceSource,
     string? ObservedProviderEmail,
-    string? SafeReasonCode)
+    string? SafeReasonCode,
+    ProviderAccountObservation? AccountObservation = null)
 {
     public bool IsVerified => Status == IdentityVerificationStatus.IdentityVerified;
 }
@@ -315,7 +424,8 @@ public sealed record BrowserAuthResult(
     BrowserAuthTimingSnapshot? Timing = null,
     AuthenticationObservationResult? ObservationResult = null,
     BrowserProfileSessionContext? CandidateProfile = null,
-    string? CancellationReason = null)
+    string? CancellationReason = null,
+    MfaObservationKind MfaObservation = MfaObservationKind.Unknown)
 {
     public static BrowserAuthResult Failure(
         BrowserAuthState state,
@@ -374,6 +484,41 @@ public interface IBrowserAuthenticationSessionDiagnostics
 public interface IBrowserIdentityObservationSession
 {
     Task<BrowserIdentityEvidence> ReadIdentityEvidenceAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Optional capability for a managed Playwright context to inspect only the
+/// visible, official account/settings surfaces. It never exposes browser state.
+/// </summary>
+public interface IBrowserAccountObservationSession
+{
+    Task<ProviderAccountObservation> ReadAccountObservationAsync(
+        Guid accountId,
+        Guid attemptId,
+        Guid browserProfileBindingId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Optional, explicit read-only capability for the authenticated ChatGPT usage endpoint.
+/// Implementations must use the current ChatGPT browser context and return only normalized fields.
+/// </summary>
+public interface IChatGptUsageApiObservationSession
+{
+    Task<ChatGptUsageApiReadResult> ReadUsageApiAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IProviderAccountObservationStore
+{
+    Task SaveAsync(ProviderAccountObservation observation, CancellationToken cancellationToken = default);
+}
+
+public interface IProviderAccountObservationReader
+{
+    Task<ProviderAccountObservationSnapshot?> GetLatestAsync(
+        Guid accountId,
+        string providerId = "openai-chatgpt",
+        CancellationToken cancellationToken = default);
 }
 
 public interface IProviderAccountVerificationService
@@ -440,5 +585,9 @@ public interface IBrowserAuthOrchestrator
 
     Task<BrowserAuthResult> CancelAsync(
         Guid attemptId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<BrowserAuthResult>> CancelAccountAttemptsAsync(
+        Guid accountId,
         CancellationToken cancellationToken = default);
 }

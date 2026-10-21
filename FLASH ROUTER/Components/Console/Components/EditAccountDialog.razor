@@ -7,7 +7,7 @@
     <div class="flash-overlay-backdrop" @onclick="HandleClose">
         <div class="flash-modal-card edit-account-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="edit-account-title">
             <div class="flash-modal-header">
-                <h3 id="edit-account-title" class="flash-modal-title">Chỉnh sửa credential</h3>
+                <h3 id="edit-account-title" class="flash-modal-title">Chỉnh sửa thông tin</h3>
                 <button type="button" class="flash-modal-close-btn" @onclick="HandleClose" aria-label="Đóng">✕</button>
             </div>
 
@@ -17,44 +17,48 @@
                     <div class="modal-error-banner" role="alert">@_errorMessage</div>
                 }
 
+                <p class="edit-account-intro">Cập nhật email, thông tin đăng nhập hoặc ghi chú. Mật khẩu và mã 2FA cũ không hiển thị trong biểu mẫu.</p>
+
                 <div class="modal-form-group">
-                    <span class="form-label">Provider</span>
+                    <span class="form-label">Nền tảng</span>
                     <div class="readonly-field">@FormatProvider(Account.Provider)</div>
                 </div>
 
                 <div class="modal-form-group">
                     <label class="form-label" for="edit-email">Email</label>
                     <input id="edit-email" type="email" class="modal-input" @bind="_email" autocomplete="username" />
+                    <span class="field-help">Email mới sẽ được dùng làm tên đăng nhập cho tài khoản này.</span>
                 </div>
 
                 <div class="modal-form-group">
-                    <span class="form-label">Password</span>
+                    <span class="form-label">Mật khẩu</span>
                     <div class="radio-options-row">
-                        <label class="radio-label"><input type="radio" name="password-update" checked="@(_passwordAction == CredentialPasswordUpdate.Keep)" @onchange="() => _passwordAction = CredentialPasswordUpdate.Keep" /> Giữ password hiện tại</label>
-                        <label class="radio-label"><input type="radio" name="password-update" checked="@(_passwordAction == CredentialPasswordUpdate.Replace)" @onchange="() => _passwordAction = CredentialPasswordUpdate.Replace" /> Thay password</label>
+                        <label class="radio-label"><input type="radio" name="password-update" checked="@(_passwordAction == CredentialPasswordUpdate.Keep)" @onchange="() => _passwordAction = CredentialPasswordUpdate.Keep" /> Giữ mật khẩu hiện tại</label>
+                        <label class="radio-label"><input type="radio" name="password-update" checked="@(_passwordAction == CredentialPasswordUpdate.Replace)" @onchange="() => _passwordAction = CredentialPasswordUpdate.Replace" /> Thay mật khẩu</label>
                     </div>
                     @if (_passwordAction == CredentialPasswordUpdate.Replace)
                     {
-                        <input id="edit-password" type="password" class="modal-input" placeholder="Password mới" @bind="_replacementPassword" autocomplete="new-password" />
+                        <input id="edit-password" type="password" class="modal-input" placeholder="Nhập mật khẩu mới" @bind="_replacementPassword" autocomplete="new-password" />
                     }
+                    <span class="field-help">Mật khẩu hiện tại được giữ nguyên nếu bạn không chọn thay đổi.</span>
                 </div>
 
                 <div class="modal-form-group">
-                    <span class="form-label">2FA</span>
+                    <span class="form-label">Xác minh hai bước (2FA)</span>
                     <div class="radio-options-row">
-                        <label class="radio-label"><input type="radio" name="totp-update" checked="@(_totpAction == CredentialTotpUpdate.Keep)" @onchange="() => _totpAction = CredentialTotpUpdate.Keep" /> Giữ 2FA hiện tại</label>
-                        <label class="radio-label"><input type="radio" name="totp-update" checked="@(_totpAction == CredentialTotpUpdate.Replace)" @onchange="() => _totpAction = CredentialTotpUpdate.Replace" /> Thay 2FA</label>
-                        <label class="radio-label"><input type="radio" name="totp-update" checked="@(_totpAction == CredentialTotpUpdate.Remove)" @onchange="() => _totpAction = CredentialTotpUpdate.Remove" /> Xóa 2FA đã lưu</label>
+                        <label class="radio-label"><input type="radio" name="totp-update" checked="@(_totpAction == CredentialTotpUpdate.Keep)" @onchange="() => _totpAction = CredentialTotpUpdate.Keep" /> Giữ mã hiện tại</label>
+                        <label class="radio-label"><input type="radio" name="totp-update" checked="@(_totpAction == CredentialTotpUpdate.Replace)" @onchange="() => _totpAction = CredentialTotpUpdate.Replace" /> Thay mã</label>
+                        <label class="radio-label"><input type="radio" name="totp-update" checked="@(_totpAction == CredentialTotpUpdate.Remove)" @onchange="() => _totpAction = CredentialTotpUpdate.Remove" /> Xóa mã đã lưu</label>
                     </div>
                     @if (_totpAction == CredentialTotpUpdate.Replace)
                     {
-                        <input id="edit-totp" type="password" class="modal-input" placeholder="TOTP secret seed mới" @bind="_replacementTotpSeed" autocomplete="off" />
+                        <input id="edit-totp" type="password" class="modal-input" placeholder="Nhập mã bí mật 2FA mới" @bind="_replacementTotpSeed" autocomplete="off" />
                     }
-                    <span class="field-help">Không hiển thị secret hiện tại. Xóa khỏi FLASH ROUTER không tắt MFA phía provider.</span>
+                    <span class="field-help">Mã hiện tại luôn được ẩn. Xóa mã tại đây không tắt xác minh hai bước ở ChatGPT.</span>
                 </div>
 
                 <div class="modal-form-group">
-                    <label class="form-label" for="edit-notes">Notes</label>
+                    <label class="form-label" for="edit-notes">Ghi chú</label>
                     <textarea id="edit-notes" class="modal-textarea" rows="3" maxlength="1000" @bind="_notes"></textarea>
                 </div>
             </div>

@@ -44,9 +44,6 @@ public sealed class SqliteAccountCommandPort : IAccountCommandPort
     public Task<OperationResultVm> RestoreAccountAsync(Guid accountId, CancellationToken cancellationToken = default)
         => RunCommandAsync(() => RestoreCoreAsync(accountId, cancellationToken), cancellationToken);
 
-    public Task<OperationResultVm> DeleteAccountAsync(Guid accountId, CancellationToken cancellationToken = default)
-        => RunCommandAsync(() => DeleteCoreAsync(accountId, cancellationToken), cancellationToken);
-
     private Task<OperationResultVm> RunCommandAsync(
         Func<Task<OperationResultVm>> operation,
         CancellationToken cancellationToken)
@@ -268,20 +265,6 @@ public sealed class SqliteAccountCommandPort : IAccountCommandPort
         context.Entry(account).Property(x => x.Version).OriginalValue = originalVersion;
         await context.SaveChangesAsync(cancellationToken);
         return OperationResultVm.Success("Đã khôi phục tài khoản trong SQLite.");
-    }
-
-    private async Task<OperationResultVm> DeleteCoreAsync(Guid accountId, CancellationToken cancellationToken)
-    {
-        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var account = await context.Set<AccountRecord>().SingleOrDefaultAsync(x => x.Id == accountId, cancellationToken);
-        if (account is null)
-        {
-            return OperationResultVm.Failure("NOT_FOUND", "Không tìm thấy tài khoản.");
-        }
-
-        context.Remove(account);
-        await context.SaveChangesAsync(cancellationToken);
-        return OperationResultVm.Success("Đã xóa tài khoản khỏi SQLite.");
     }
 
     private static bool IsUniqueConstraint(DbUpdateException exception)

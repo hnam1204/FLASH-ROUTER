@@ -378,10 +378,10 @@ public sealed class ChatGptPasswordStepAutomationTests : IAsyncLifetime
     }
 
     // -------------------------------------------------------------
-    // Test 15: Session verification success reports BrowserSessionObserved
+    // Test 15: An authenticated page without matching identity stays unconfirmed
     // -------------------------------------------------------------
     [Fact]
-    public async Task Test15_SessionVerificationSuccess_ReportsBrowserSessionObserved()
+    public async Task Test15_AuthenticatedPageWithoutIdentityReportsUnconfirmed()
     {
         var accountId = await CreateAccountAsync("user15@example.test", "Pass15");
         var session = new ConfigurableBrowserSession
@@ -395,7 +395,7 @@ public sealed class ChatGptPasswordStepAutomationTests : IAsyncLifetime
         var result = await orchestrator.ConfirmAndFillAsync(started.AttemptId!.Value, BrowserAuthAction.FillPassword, confirmed: true);
 
         Assert.Equal(BrowserAuthState.BrowserSessionObserved, result.State);
-        Assert.Equal("BROWSER_SESSION_OBSERVED", result.Status);
+        Assert.Equal("IDENTITY_UNCONFIRMED", result.Status);
         Assert.NotNull(result.Observation);
         Assert.Equal(accountId, result.Observation.AccountId);
     }

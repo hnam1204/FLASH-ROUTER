@@ -87,7 +87,7 @@ public interface IEphemeralBrowserProfileFactory
 
 public sealed class EphemeralBrowserProfilePreparationResult : IAsyncDisposable
 {
-    private readonly Func<ValueTask>? _cleanup;
+    private Func<ValueTask>? _cleanup;
 
     public EphemeralBrowserProfilePreparationResult(
         bool isSuccess,
@@ -107,6 +107,12 @@ public sealed class EphemeralBrowserProfilePreparationResult : IAsyncDisposable
     public string Status { get; }
     public string Message { get; }
     public BrowserProfileSessionContext? Context { get; }
+
+    /// <summary>
+    /// Transfers the generated profile directory to its durable account binding.
+    /// Once promoted, attempt cleanup must not delete the account's saved session.
+    /// </summary>
+    public void TransferOwnership() => _cleanup = null;
 
     public async ValueTask DisposeAsync()
     {

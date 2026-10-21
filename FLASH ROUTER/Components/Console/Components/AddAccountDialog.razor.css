@@ -69,6 +69,10 @@
     outline: none;
 }
 
+.credential-input {
+    padding-right: 42px;
+}
+
 .password-toggle-btn {
     position: absolute;
     right: 10px;
@@ -79,6 +83,16 @@
     display: inline-flex;
     align-items: center;
     padding: 4px;
+}
+
+.password-toggle-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.7;
 }
 
 .password-toggle-btn:hover {

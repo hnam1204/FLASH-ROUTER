@@ -4,6 +4,8 @@ using FlashAI.Foundation.Composition;
 using FlashAI.Foundation.Hosting;
 using FlashAI.Foundation.Persistence;
 using FlashAI.Modules.Accounts;
+using FlashAI.Modules.Accounts.Application;
+using FlashAI.Modules.Accounts.Contracts;
 using FlashAI.Modules.Activity;
 using FlashAI.Modules.Authenticator;
 using FlashAI.Modules.BackupRestore;
@@ -40,6 +42,12 @@ builder.Services
 if (string.Equals(builder.Configuration["FlashAI:AccountStorageMode"], "Integrated", StringComparison.OrdinalIgnoreCase))
 {
     builder.Services.AddScoped<FlashAI.Modules.ImportExport.Contracts.IImportExportUiPort, SqliteImportExportUiPort>();
+    builder.Services.AddScoped<IPermanentAccountDeletionService, SqlitePermanentAccountDeletionService>();
+}
+else
+{
+    builder.Services.AddScoped<IPermanentAccountDeletionService>(serviceProvider =>
+        serviceProvider.GetRequiredService<PreviewAccountWorkspaceService>());
 }
 
 var app = builder.Build();

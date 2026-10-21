@@ -18,12 +18,9 @@
                 }
 
                 <div class="modal-form-group">
-                    <label class="form-label" for="add-platform">Provider</label>
+                    <label class="form-label" for="add-platform">Nền tảng</label>
                     <select id="add-platform" class="modal-select" @bind="_provider">
                         <option value="openai-chatgpt">ChatGPT</option>
-                        <option value="anthropic-claude" disabled>Claude (chưa hỗ trợ tự động)</option>
-                        <option value="google-gemini" disabled>Gemini (chưa hỗ trợ tự động)</option>
-                        <option value="openrouter" disabled>OpenRouter (dùng kết nối API)</option>
                     </select>
                 </div>
 
@@ -34,11 +31,29 @@
                     </div>
                     <div class="credential-input-box">
                         <input id="quick-credential-input"
-                               type="password"
-                               class="modal-input"
+                               type="@(_showCredential ? "text" : "password")"
+                               class="modal-input credential-input"
                                placeholder="email|password|totp_seed (tùy chọn)"
                                @bind="_credentialLine"
                                autocomplete="off" />
+                        <button type="button"
+                                class="password-toggle-btn"
+                                @onclick="ToggleCredentialVisibility"
+                                aria-label="@(_showCredential ? "Ẩn credential" : "Hiển thị credential")"
+                                title="@(_showCredential ? "Ẩn credential" : "Hiển thị credential")">
+                            @if (_showCredential)
+                            {
+                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Zm9.5 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+                                </svg>
+                            }
+                            else
+                            {
+                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <path d="m3 3 18 18M10.6 6.2A9.6 9.6 0 0 1 12 6c6 0 9.5 6 9.5 6a17.7 17.7 0 0 1-3.1 3.8M6.7 6.8C4 8.2 2.5 12 2.5 12s3.5 6 9.5 6c1.3 0 2.5-.3 3.5-.8M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+                                </svg>
+                            }
+                        </button>
                     </div>
                     <span class="field-help">Dùng dấu ngoặc kép hoặc escape <code>\|</code> nếu password chứa dấu <code>|</code>. TOTP phải là secret seed, không phải mã sáu số.</span>
                 </div>
@@ -66,6 +81,7 @@
     private string _credentialLine = string.Empty;
     private string _notes = string.Empty;
     private string? _errorMessage;
+    private bool _showCredential;
 
     private async Task HandleSave()
     {
@@ -107,5 +123,8 @@
         _credentialLine = string.Empty;
         _notes = string.Empty;
         _errorMessage = null;
+        _showCredential = false;
     }
+
+    private void ToggleCredentialVisibility() => _showCredential = !_showCredential;
 }

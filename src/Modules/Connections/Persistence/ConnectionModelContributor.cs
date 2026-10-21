@@ -29,7 +29,11 @@ public sealed class ConnectionModelContributor : IFlashAiModelContributor
         browserBinding.Property(x => x.ProfileDirectoryReference).HasMaxLength(1000).IsRequired();
         browserBinding.Property(x => x.State).HasMaxLength(30).IsRequired();
         browserBinding.Property(x => x.ConcurrencyVersion).IsConcurrencyToken().IsRequired();
-        browserBinding.HasIndex(x => new { x.AccountId, x.ProviderId, x.BrowserKind }).IsUnique();
+        // Archived bindings must remain as recoverable history while only one
+        // non-archived binding is authoritative for an account/provider/kind.
+        browserBinding.HasIndex(x => new { x.AccountId, x.ProviderId, x.BrowserKind })
+            .IsUnique()
+            .HasFilter("State <> 'Archived'");
         browserBinding.HasIndex(x => x.OpaqueProfileIdentifier).IsUnique();
 
         // Configure the cross-module FK by name so project references remain one-way.
@@ -149,6 +153,39 @@ public sealed class ConnectionModelContributor : IFlashAiModelContributor
         sync.HasOne<ProviderConnectionRecord>()
             .WithMany()
             .HasForeignKey(x => x.ConnectionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        var accountObservation = modelBuilder.Entity<ProviderAccountObservationRecord>();
+        accountObservation.ToTable("ProviderAccountObservations");
+        accountObservation.HasKey(x => x.Id);
+        accountObservation.Property(x => x.ProviderId).HasMaxLength(100).IsRequired();
+        accountObservation.Property(x => x.BrowserContextId).HasMaxLength(120).IsRequired();
+        accountObservation.Property(x => x.Locale).HasMaxLength(30).IsRequired();
+        accountObservation.Property(x => x.ObservationStatus).HasMaxLength(40).IsRequired();
+        accountObservation.Property(x => x.EvidenceSurface).HasMaxLength(200).IsRequired();
+        accountObservation.Property(x => x.FailureReasonCode).HasMaxLength(120);
+        accountObservation.HasIndex(x => new { x.AccountId, x.ProviderId, x.ObservedAtUtc });
+
+        var accountObservationField = modelBuilder.Entity<ProviderAccountObservationFieldRecord>();
+        accountObservationField.ToTable("ProviderAccountObservationFields");
+        accountObservationField.HasKey(x => x.Id);
+        accountObservationField.Property(x => x.Field).HasConversion<string>().HasMaxLength(50).IsRequired();
+        accountObservationField.Property(x => x.Value).HasMaxLength(4000);
+        accountObservationField.Property(x => x.Source).HasMaxLength(200).IsRequired();
+        accountObservationField.Property(x => x.EvidenceType).HasMaxLength(80).IsRequired();
+        accountObservationField.Property(x => x.Confidence).HasMaxLength(30).IsRequired();
+        accountObservationField.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+        accountObservationField.Property(x => x.FailureReasonCode).HasMaxLength(120);
+        accountObservationField.HasIndex(x => new { x.ObservationId, x.Field }).IsUnique();
+        accountObservationField.HasOne<ProviderAccountObservationRecord>()
+            .WithMany(x => x.Fields)
+            .HasForeignKey(x => x.ObservationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity("FlashAI.Modules.Connections.Domain.ProviderAccountObservationRecord")
+            .HasOne("FlashAI.Modules.Accounts.Domain.AccountRecord", null)
+            .WithMany()
+            .HasForeignKey(nameof(ProviderAccountObservationRecord.AccountId))
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -322,6 +322,44 @@ public sealed class DpapiAuthenticatorUiPort : IAuthenticatorUiPort, IDisposable
         }
     }
 
+    public async Task<OperationResultVm> RemoveAccountCredentialsAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_disposed || accountId == Guid.Empty)
+        {
+            return OperationResultVm.Failure("INVALID_ACCOUNT", "Không xác định được tài khoản cần xóa khóa 2FA.");
+        }
+
+        await IndexGate.WaitAsync(cancellationToken);
+        try
+        {
+            var index = await ReadIndexAsync(cancellationToken);
+            var removed = index.Where(item => item.AccountId == accountId).ToArray();
+            if (removed.Length == 0)
+            {
+                return OperationResultVm.Success("Tài khoản không có khóa 2FA riêng cần dọn.");
+            }
+
+            foreach (var metadata in removed)
+            {
+                await _vault.RemoveAsync(GetSecretKey(metadata.CredentialId), cancellationToken);
+            }
+
+            index.RemoveAll(item => item.AccountId == accountId);
+            await SaveIndexAsync(index, cancellationToken);
+            return OperationResultVm.Success("Đã xóa khóa 2FA của tài khoản khỏi Vault mã hóa.");
+        }
+        catch (SecretVaultException exception)
+        {
+            return OperationResultVm.Failure(exception.ErrorCode, "Không thể xóa toàn bộ khóa 2FA khỏi Vault mã hóa.");
+        }
+        finally
+        {
+            IndexGate.Release();
+        }
+    }
+
     private async Task<List<CredentialMetadata>> ReadIndexAsync(CancellationToken cancellationToken)
     {
         var payload = await _vault.ReadAsync(CredentialIndexKey, cancellationToken);

@@ -100,4 +100,10 @@ public sealed class PreviewAuthenticatorUiPort : IAuthenticatorUiPort
         _credentials.RemoveAll(c => c.CredentialId == credentialId);
         return Task.FromResult(OperationResultVm.Success("Đã xóa khóa 2FA mẫu."));
     }
+
+    public Task<OperationResultVm> RemoveAccountCredentialsAsync(Guid accountId, CancellationToken cancellationToken = default)
+    {
+        _credentials.RemoveAll(c => c.AccountId == accountId);
+        return Task.FromResult(OperationResultVm.Success("Đã xóa khóa 2FA mẫu của tài khoản."));
+    }
 }

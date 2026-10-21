@@ -34,6 +34,17 @@ public enum AccountBrowserRuntimeState
     Unknown
 }
 
+public enum BrowserCloseReason
+{
+    UserRequested,
+    LeaseExpired,
+    CancellationRequested,
+    ContextDisposed,
+    BrowserProcessExited,
+    NavigationFailure,
+    Unknown
+}
+
 public sealed record BrowserRuntimeSnapshot(
     Guid AccountId,
     Guid? BrowserProfileBindingId,
@@ -47,7 +58,9 @@ public sealed record BrowserRuntimeSnapshot(
     DateTimeOffset? LastSessionObservedAtUtc = null,
     DateTimeOffset? LastAuthenticatedSessionConfirmedAtUtc = null,
     string EvidenceSource = "Current process reconciliation",
-    string? SanitizedFailureCode = null);
+    string? SanitizedFailureCode = null,
+    Guid? ActiveAttemptId = null,
+    BrowserCloseReason? CloseReason = null);
 
 public sealed record BrowserOperationResult(
     bool IsSuccess,
@@ -93,6 +106,7 @@ public enum BrowserProfileLifecycleState
     Opening,
     OwnedByManagedChrome,
     OwnedByPlaywright,
+    Deleting,
     InUseExternally,
     Closing,
     Closed,
@@ -103,6 +117,7 @@ public enum BrowserProfileOwnerKind
 {
     ManagedChrome,
     Playwright,
+    PermanentDeletion,
     External
 }
 
@@ -175,6 +190,29 @@ public interface IAccountBrowserSessionManager
         CancellationToken cancellationToken = default);
 
     Task ReconcileAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IAccountDataObservationPort
+{
+    Task<AccountObservationResult> ObserveAccountDataAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default);
+}
+
+public enum AccountObservationPersistenceMode
+{
+    DoNotPersist,
+    PersistNonSecretObservations,
+    PersistChatGptUsageSnapshotOnly
+}
+
+public interface IAuthorizedAccountDataObservationPort
+{
+    Task<AccountObservationResult> ObserveAccountDataAsync(
+        Guid accountId,
+        AccountObservationPersistenceMode persistenceMode,
+        CancellationToken cancellationToken = default,
+        bool readChatGptUsageApi = false);
 }
 
 public interface IAccountBrowserSessionRegistration
@@ -277,5 +315,6 @@ public interface IBrowserProfilePromotionService
     Task<BrowserProfilePromotionResult> PromoteCandidateAsync(
         Guid accountId,
         BrowserProfileSessionContext candidate,
+        IdentityVerificationStatus identityStatus,
         CancellationToken cancellationToken = default);
 }

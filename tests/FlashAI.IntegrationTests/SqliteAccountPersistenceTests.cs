@@ -104,7 +104,7 @@ public sealed class SqliteAccountPersistenceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FavoriteArchiveRestoreAndDeleteAreDurable()
+    public async Task FavoriteArchiveAndRestoreAreDurable()
     {
         await using var scope = _fixture.Services.CreateAsyncScope();
         var commands = scope.ServiceProvider.GetRequiredService<SqliteAccountCommandPort>();
@@ -118,8 +118,6 @@ public sealed class SqliteAccountPersistenceTests : IAsyncLifetime
         Assert.Single(await reader.GetAccountsAsync(null, "archived"));
         Assert.True((await commands.RestoreAccountAsync(accountId)).IsSuccess);
         Assert.Single(await reader.GetAccountsAsync());
-        Assert.True((await commands.DeleteAccountAsync(accountId)).IsSuccess);
-        Assert.Null(await reader.GetAccountDetailAsync(accountId));
     }
 
     [Fact]
@@ -221,9 +219,25 @@ public sealed class SqliteAccountDatabaseFixture : IAsyncLifetime
     {
         await Services.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
+
+        var deadline = DateTime.UtcNow.AddSeconds(3);
+        while (Directory.Exists(_root))
         {
-            Directory.Delete(_root, recursive: true);
+            try
+            {
+                Directory.Delete(_root, recursive: true);
+                return;
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                SqliteConnection.ClearAllPools();
+                await Task.Delay(50);
+            }
+            catch (UnauthorizedAccessException) when (DateTime.UtcNow < deadline)
+            {
+                SqliteConnection.ClearAllPools();
+                await Task.Delay(50);
+            }
         }
     }
 

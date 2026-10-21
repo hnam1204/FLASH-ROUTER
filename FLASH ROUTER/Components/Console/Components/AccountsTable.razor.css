@@ -293,65 +293,6 @@
     border-color: var(--app-border-strong);
 }
 
-.table-btn.btn-more {
-    width: 32px;
-    padding: 0;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 16px;
-    border-color: transparent;
-}
-
-.table-btn.btn-more:hover {
-    background: var(--hover);
-    color: var(--text-primary);
-}
-
-.more-menu-wrapper {
-    position: relative;
-}
-
-.row-dropdown-menu {
-    position: absolute;
-    right: 0;
-    top: 100%;
-    margin-top: 4px;
-    background: var(--app-surface);
-    border: 1px solid var(--app-border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    min-width: 150px;
-    z-index: 50;
-    isolation: isolate;
-}
-
-.dropdown-item {
-    border: none;
-    background: transparent;
-    color: var(--text-primary);
-    padding: 8px 12px;
-    text-align: left;
-    font-size: 12.5px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background-color var(--transition-fast);
-}
-
-.dropdown-item:hover {
-    background: var(--hover);
-}
-
-.dropdown-item.danger {
-    color: var(--state-error);
-}
-
-.dropdown-item.danger:hover {
-    background: var(--state-error-bg);
-}
-
 /* Empty State */
 .empty-table-state {
     padding: 48px 24px;
@@ -484,7 +425,7 @@
 }
 
 .col-actions {
-    width: 220px;
+    width: 190px;
 }
 
 .action-buttons-group {
@@ -532,7 +473,7 @@
     }
 
     .col-actions {
-        width: 168px;
+        width: 160px;
     }
 
     .account-email {

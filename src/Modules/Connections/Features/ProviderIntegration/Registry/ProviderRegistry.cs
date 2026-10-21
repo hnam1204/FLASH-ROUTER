@@ -17,6 +17,7 @@ public sealed class ProviderRegistry : IProviderRegistry
         _descriptors = _adapters.Values
             .Select(adapter => adapter.Descriptor)
             .Concat(ResearchOnlyProviders)
+            .Concat(LocalQuotaSources)
             .GroupBy(descriptor => descriptor.ProviderId, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .OrderBy(descriptor => descriptor.DisplayName, StringComparer.Ordinal)
@@ -41,7 +42,24 @@ public sealed class ProviderRegistry : IProviderRegistry
         Research("windsurf", "Windsurf", "https://windsurf.com/"),
         Research("kiro", "Kiro", "https://kiro.dev/"),
         Research("antigravity", "Antigravity", "https://antigravity.google/"),
-        Research("codex-cli", "Codex CLI", "https://github.com/openai/codex")
+    ];
+
+    private static IReadOnlyList<ProviderDescriptor> LocalQuotaSources =>
+    [
+        new(
+            "codex-cli",
+            "Codex CLI",
+            ProviderType.AiWeb,
+            ConnectionKind.Manual,
+            ProviderCredentialKind.OAuthAccessToken,
+            new HashSet<ProviderCapability> { ProviderCapability.Quota },
+            "https://github.com/openai/codex",
+            "Chỉ đọc gói và quota từ phiên Codex CLI trên máy; không hỗ trợ kết nối API chung.",
+            new HashSet<string>(StringComparer.Ordinal) { "chatgpt.com" },
+            ProviderImplementationState.Implemented,
+            OfflineTested: true,
+            LiveVerified: false,
+            IsConnectable: false)
     ];
 
     private static ProviderDescriptor Research(string providerId, string displayName, string documentationReference)

@@ -7,6 +7,7 @@ using FlashAI.Modules.Accounts.Contracts;
 using FlashAI.Modules.Authenticator.Application;
 using FlashAI.Modules.Connections.Application;
 using FlashAI.Modules.Connections.Contracts;
+using FlashAI.Modules.Connections.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
@@ -70,7 +71,7 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
         using var profileManager = CreateProfileManager();
         var originPolicy = CreateLocalOriginPolicy();
 
-        var sessionFactory = CreateSessionFactory(originPolicy, _server.LoginUri);
+        var sessionFactory = CreateSessionFactory(originPolicy, new Uri(_server.LoginUri, "?variant=account-settings-en"));
         await using var orchestrator = CreateOrchestrator(profileManager, sessionFactory, originPolicy);
         var started = await orchestrator.StartAsync(accountA);
         Assert.Equal(BrowserAuthState.EmailRequired, started.State);
@@ -90,20 +91,33 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
         var persisted = await accountReader.GetAccountDetailAsync(accountA);
         Assert.NotNull(persisted);
         Assert.Equal("AuthenticatedSessionConfirmed", persisted!.AuthenticationState);
-        Assert.Equal("IdentityVerified", persisted.IdentityVerificationState);
+        Assert.True(
+            string.Equals(persisted.IdentityVerificationState, "IdentityVerified", StringComparison.Ordinal),
+            $"IdentityState={persisted.IdentityVerificationState}; ObservedProviderEmail={observed.ObservationResult?.ObservedProviderEmail}; Reason={observed.ObservationResult?.IdentityReasonCode}; Source={observed.ObservationResult?.IdentityEvidenceSource}");
         Assert.Equal("headed-a@example.test", persisted.LastObservedProviderEmail);
         Assert.Contains("account-menu", persisted.LastIdentityEvidenceSource, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(started.AttemptId, persisted.LastAuthenticationAttemptId);
         Assert.NotNull(persisted.LastAuthenticatedSessionConfirmedAtUtc);
+        Assert.True(await sessionFactory.HasMockSessionCookieAsync());
+
+        var accountObservationStore = new SqliteProviderAccountObservationStore(_database.ContextFactory);
+        var accountObservation = await accountObservationStore.GetLatestAsync(accountA);
+        Assert.NotNull(accountObservation);
+        Assert.Equal("Plus", accountObservation!.Fields.Single(item => item.Field == ProviderAccountObservationField.Plan).Value);
+        Assert.Equal("Enabled", accountObservation.Fields.Single(item => item.Field == ProviderAccountObservationField.MfaConfiguration).Value);
+        Assert.Equal(ProviderAccountObservationFieldStatus.Unsupported, accountObservation.Fields.Single(item => item.Field == ProviderAccountObservationField.UsageQuota).Status);
 
         var closed = await orchestrator.CancelAsync(started.AttemptId.Value);
         Assert.Equal(BrowserAuthState.Cancelled, closed.State);
 
         var preparedA = await profileManager.PrepareAsync(accountA);
         Assert.True(preparedA.IsSuccess, preparedA.Message);
-        await using (var reopenedA = await CreateSessionFactory(originPolicy).OpenAsync(preparedA.Context!, BrowserOriginPolicy.ChatGptUri))
+        var reopenedFactoryA = CreateSessionFactory(originPolicy);
+        await using (var reopenedA = await reopenedFactoryA.OpenAsync(preparedA.Context!, BrowserOriginPolicy.ChatGptUri))
         {
             var snapshot = await reopenedA.ReadPageAsync();
+            Assert.Equal(sessionFactory.LastProfileDirectory, reopenedFactoryA.LastProfileDirectory);
+            Assert.True(await reopenedFactoryA.HasMockSessionCookieAsync());
             Assert.Equal(BrowserPageState.Authenticated, snapshot.State);
         }
 
@@ -176,9 +190,11 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
         await orchestrator.CancelAsync(result.AttemptId!.Value);
         var prepared = await profileManager.PrepareAsync(accountId);
         Assert.True(prepared.IsSuccess, prepared.Message);
-        await using var reopened = await CreateSessionFactory(originPolicy, _server.GuestUri)
-            .OpenAsync(prepared.Context!, BrowserOriginPolicy.ChatGptUri);
+        var reopenedFactory = CreateSessionFactory(originPolicy, _server.GuestUri);
+        await using var reopened = await reopenedFactory.OpenAsync(prepared.Context!, BrowserOriginPolicy.ChatGptUri);
         var snapshot = await reopened.ReadPageAsync();
+        Assert.Equal(prepared.Context!.ProfileDirectory, reopenedFactory.LastProfileDirectory);
+        Assert.True(await reopenedFactory.HasMockSessionCookieAsync());
         Assert.Equal(BrowserPageState.Authenticated, snapshot.State);
     }
 
@@ -330,7 +346,11 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
 
         await Task.Delay(TimeSpan.FromSeconds(60));
         var refreshed = await orchestrator.RefreshAsync(started.AttemptId!.Value);
-        Assert.Equal(BrowserAuthState.GuestLandingLoginAvailable, refreshed.State);
+        Assert.True(
+            refreshed.State == BrowserAuthState.GuestLandingLoginAvailable,
+            $"Status={refreshed.Status}; Message={refreshed.Message}; Uri={sessionFactory.ActiveCurrentUri}; " +
+            $"Identity={refreshed.ObservationResult?.IdentityStatus}; Reason={refreshed.ObservationResult?.IdentityReasonCode}; " +
+            $"ProviderEmail={refreshed.ObservationResult?.ObservedProviderEmail}");
         await orchestrator.CancelAsync(started.AttemptId.Value);
     }
 
@@ -433,6 +453,29 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task HeadedPlaywrightReturnsBoundedObservationWhenDomIsTemporarilyReplaced()
+    {
+        RequireChrome();
+        var accountId = await CreateAccountAsync("dom-transition@example.test", "SyntheticPassword-DomTransition");
+        using var profileManager = CreateProfileManager();
+        var originPolicy = CreateLocalOriginPolicy();
+        var sessionFactory = CreateSessionFactory(originPolicy);
+        await using var orchestrator = CreateOrchestrator(profileManager, sessionFactory, originPolicy);
+
+        var started = await orchestrator.StartAsync(accountId);
+        Assert.Equal(BrowserAuthState.EmailRequired, started.State);
+
+        await sessionFactory.RemoveBodyForObservationAsync();
+        var refreshed = await orchestrator.RefreshAsync(started.AttemptId!.Value);
+
+        Assert.False(refreshed.IsSuccess);
+        Assert.Equal(BrowserAuthState.Unknown, refreshed.State);
+        Assert.Equal("BROWSER_DOM_READ_TIMEOUT", refreshed.Status);
+
+        await orchestrator.CancelAsync(started.AttemptId.Value);
+    }
+
+    [Fact]
     public async Task HeadedPlaywrightPersistsIdentityMismatchWithoutPromotingIt()
     {
         RequireChrome();
@@ -461,7 +504,7 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task HeadedPlaywrightKeepsSessionObservedWhenIdentityEvidenceIsUnavailable()
+    public async Task HeadedPlaywrightUsesOfficialSettingsWhenAccountMenuIdentityIsUnavailable()
     {
         RequireChrome();
         var accountId = await CreateAccountAsync("unverified@example.test", "SyntheticPassword-Unverified");
@@ -477,10 +520,141 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
 
         Assert.True(result.IsSuccess);
         Assert.Equal(BrowserAuthState.BrowserSessionObserved, result.State);
-        Assert.Equal(IdentityVerificationStatus.Unverified, result.ObservationResult?.IdentityStatus);
+        Assert.Equal(IdentityVerificationStatus.IdentityVerified, result.ObservationResult?.IdentityStatus);
         var persisted = await new SqliteAccountWorkspaceReader(_database.ContextFactory).GetAccountDetailAsync(accountId);
         Assert.Equal("AuthenticatedSessionConfirmed", persisted!.AuthenticationState);
-        Assert.Equal("Unverified", persisted.IdentityVerificationState);
+        Assert.Equal("IdentityVerified", persisted.IdentityVerificationState);
+        Assert.Equal("unverified@example.test", persisted.LastObservedProviderEmail);
+        var observation = await new SqliteProviderAccountObservationStore(_database.ContextFactory).GetLatestAsync(accountId);
+        Assert.NotNull(observation);
+        Assert.Equal("Free", observation!.Fields.Single(item => item.Field == ProviderAccountObservationField.Plan).Value);
+        Assert.Equal(ProviderAccountObservationFieldStatus.Observed, observation.Fields.Single(item => item.Field == ProviderAccountObservationField.Plan).Status);
+        Assert.Equal(ProviderAccountObservationFieldStatus.Unsupported, observation.Fields.Single(item => item.Field == ProviderAccountObservationField.UsageQuota).Status);
+        await orchestrator.CancelAsync(started.AttemptId.Value);
+    }
+
+    [Fact]
+    public async Task HeadedPlaywrightObservesDelayedVietnameseAccountSettings()
+    {
+        RequireChrome();
+        var accountId = await CreateAccountAsync("delayed-vi@example.test", "SyntheticPassword-DelayedSettings");
+        using var profileManager = CreateProfileManager();
+        var originPolicy = CreateLocalOriginPolicy();
+        var sessionFactory = CreateSessionFactory(
+            originPolicy,
+            new Uri(_server.LoginUri, "?variant=account-settings-vi-delayed"));
+        await using var orchestrator = CreateOrchestrator(profileManager, sessionFactory, originPolicy);
+
+        var started = await orchestrator.StartAsync(accountId);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId!.Value, BrowserAuthAction.FillEmail, true);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, true);
+        var result = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillTotp, true);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(BrowserAuthState.BrowserSessionObserved, result.State);
+        var observation = await new SqliteProviderAccountObservationStore(_database.ContextFactory).GetLatestAsync(accountId);
+        Assert.NotNull(observation);
+        Assert.Equal("vi", observation!.Locale);
+        Assert.Equal("Free", observation.Fields.Single(item => item.Field == ProviderAccountObservationField.Plan).Value);
+        Assert.Equal("Enabled", observation.Fields.Single(item => item.Field == ProviderAccountObservationField.MfaConfiguration).Value);
+        Assert.Equal("delayed-vi@example.test", observation.Fields.Single(item => item.Field == ProviderAccountObservationField.Email).Value);
+
+        await orchestrator.CancelAsync(started.AttemptId.Value);
+    }
+
+    [Fact]
+    public async Task HeadedPlaywrightUsesSettingsEmailWhenAccountMenuOmitsEmail()
+    {
+        RequireChrome();
+        var accountId = await CreateAccountAsync("settings-only@example.test", "SyntheticPassword-SettingsOnly");
+        using var profileManager = CreateProfileManager();
+        var originPolicy = CreateLocalOriginPolicy();
+        var sessionFactory = CreateSessionFactory(
+            originPolicy,
+            new Uri(_server.LoginUri, "?variant=account-settings-only-email"));
+        await using var orchestrator = CreateOrchestrator(profileManager, sessionFactory, originPolicy);
+
+        var started = await orchestrator.StartAsync(accountId);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId!.Value, BrowserAuthAction.FillEmail, true);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, true);
+        var result = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillTotp, true);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(IdentityVerificationStatus.IdentityVerified, result.ObservationResult?.IdentityStatus);
+        var observation = await new SqliteProviderAccountObservationStore(_database.ContextFactory).GetLatestAsync(accountId);
+        Assert.NotNull(observation);
+        var email = observation!.Fields.Single(item => item.Field == ProviderAccountObservationField.Email);
+        Assert.Equal("settings-only@example.test", email.Value);
+        Assert.Equal("OfficialSettingsAccount", email.Source);
+        Assert.Equal(ProviderAccountObservationFieldStatus.Observed, email.Status);
+        Assert.Contains("official Settings UI", observation.EvidenceSurface, StringComparison.OrdinalIgnoreCase);
+
+        await orchestrator.CancelAsync(started.AttemptId.Value);
+    }
+
+    [Fact]
+    public async Task HeadedPlaywrightNavigatesFromGeneralSettingsAndWaitsForAccountEvidence()
+    {
+        RequireChrome();
+        const string emailAddress = "settings-route-delayed@example.test";
+        const string variant = "account-settings-general-route-vi-delayed";
+        var accountId = await CreateAccountAsync(emailAddress, "SyntheticPassword-SettingsRoute");
+        using var profileManager = CreateProfileManager();
+        var originPolicy = CreateLocalOriginPolicy();
+        var sessionFactory = CreateSessionFactory(originPolicy, new Uri(_server.LoginUri, $"?variant={variant}"));
+        await using var orchestrator = CreateOrchestrator(profileManager, sessionFactory, originPolicy);
+
+        var started = await orchestrator.StartAsync(accountId);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId!.Value, BrowserAuthAction.FillEmail, true);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, true);
+        await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillTotp, true);
+
+        var session = Assert.IsAssignableFrom<IBrowserAuthenticationSession>(sessionFactory.ActiveSession);
+        var accountSession = Assert.IsAssignableFrom<IBrowserAccountObservationSession>(sessionFactory.ActiveSession);
+        var profileBindingId = Assert.IsType<Guid>(sessionFactory.ActiveProfileBindingId);
+        await session.NavigateAsync(new Uri(_server.BaseUri, $"/settings/general-settings?variant={variant}"));
+
+        var observation = await accountSession.ReadAccountObservationAsync(
+            accountId,
+            started.AttemptId.Value,
+            profileBindingId);
+
+        Assert.True(observation.AuthenticatedShellDetected);
+        Assert.Equal("Observed", observation.ObservationStatus);
+        Assert.Equal(emailAddress, observation.Email.Value);
+        Assert.Equal("OfficialSettingsAccount", observation.Email.EvidenceType);
+        Assert.Equal("Free", observation.Plan.Value);
+        await orchestrator.CancelAsync(started.AttemptId.Value);
+    }
+
+    [Fact]
+    public async Task HeadedPlaywrightFailsClosedWhenAccountSurfacesExposeMultipleEmails()
+    {
+        RequireChrome();
+        var accountId = await CreateAccountAsync("ambiguous-settings@example.test", "SyntheticPassword-AmbiguousSettings");
+        using var profileManager = CreateProfileManager();
+        var originPolicy = CreateLocalOriginPolicy();
+        var sessionFactory = CreateSessionFactory(
+            originPolicy,
+            new Uri(_server.LoginUri, "?variant=account-settings-multiple-emails"));
+        await using var orchestrator = CreateOrchestrator(profileManager, sessionFactory, originPolicy);
+
+        var started = await orchestrator.StartAsync(accountId);
+        var email = await orchestrator.ConfirmAndFillAsync(started.AttemptId!.Value, BrowserAuthAction.FillEmail, confirmed: true);
+        Assert.Equal(BrowserAuthState.PasswordRequired, email.State);
+        var password = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillPassword, confirmed: true);
+        Assert.Equal(BrowserAuthState.MfaRequired, password.State);
+        var observed = await orchestrator.ConfirmAndFillAsync(started.AttemptId.Value, BrowserAuthAction.FillTotp, confirmed: true);
+
+        Assert.Equal(BrowserAuthState.BrowserSessionObserved, observed.State);
+        Assert.True(
+            observed.ObservationResult?.IdentityStatus == IdentityVerificationStatus.Unverified,
+            $"status={observed.ObservationResult?.IdentityStatus}; email={observed.ObservationResult?.ObservedProviderEmail}; reason={observed.ObservationResult?.IdentityReasonCode}; source={observed.ObservationResult?.IdentityEvidenceSource}");
+        Assert.Equal("IDENTITY_EMAIL_AMBIGUOUS", observed.ObservationResult?.IdentityReasonCode);
+
+        var persisted = await new SqliteAccountWorkspaceReader(_database.ContextFactory).GetAccountDetailAsync(accountId);
+        Assert.NotNull(persisted);
+        Assert.NotEqual("IdentityVerified", persisted!.IdentityVerificationState);
         await orchestrator.CancelAsync(started.AttemptId.Value);
     }
 
@@ -501,7 +675,8 @@ public sealed class BrowserAuthPlaywrightE2ETests : IAsyncLifetime
             new BrowserAuthCredentialReader(_database.ContextFactory, _vault, _vaultAccess),
             new Rfc6238TotpGenerator(),
             originPolicy,
-            authenticationStateStore: new SqliteAccountAuthenticationStateStore(_database.ContextFactory));
+            authenticationStateStore: new SqliteAccountAuthenticationStateStore(_database.ContextFactory),
+            accountObservationStore: new SqliteProviderAccountObservationStore(_database.ContextFactory));
 
     private LocalPlaywrightSessionFactory CreateSessionFactory(
         Func<Uri?, bool> originPolicy,
@@ -567,7 +742,10 @@ internal sealed class LocalPlaywrightSessionFactory : IBrowserAuthenticationSess
     private IBrowserContext? _activeContext;
 
     public Uri? LastOpenedUri { get; private set; }
+    public string? LastProfileDirectory { get; private set; }
     public Uri? ActiveCurrentUri => _activeSession?.CurrentUri;
+    public IBrowserAuthenticationSession? ActiveSession => _activeSession;
+    public Guid? ActiveProfileBindingId { get; private set; }
     private IBrowserAuthenticationSession? _activeSession;
 
     public LocalPlaywrightSessionFactory(Uri loginUri, Func<Uri?, bool> originPolicy)
@@ -607,6 +785,8 @@ internal sealed class LocalPlaywrightSessionFactory : IBrowserAuthenticationSess
             var session = new PlaywrightBrowserAuthenticationSession(playwright, context, page, _originPolicy);
             _activeContext = context;
             _activeSession = session;
+            ActiveProfileBindingId = profile.BindingId;
+            LastProfileDirectory = profile.ProfileDirectory;
             playwright = null;
             context = null;
             LastOpenedUri = _loginUri;
@@ -627,6 +807,21 @@ internal sealed class LocalPlaywrightSessionFactory : IBrowserAuthenticationSess
 
     public Task CloseActiveAsync()
         => _activeContext?.CloseAsync() ?? Task.CompletedTask;
+
+    public async Task<bool> HasMockSessionCookieAsync()
+    {
+        var page = _activeContext?.Pages.FirstOrDefault()
+            ?? throw new InvalidOperationException("No active Playwright page is available.");
+        return await page.EvaluateAsync<bool>("() => document.cookie.includes('mock_session=')");
+    }
+
+    public async Task RemoveBodyForObservationAsync()
+    {
+        var page = _activeContext?.Pages.FirstOrDefault()
+            ?? throw new InvalidOperationException("No active Playwright page is available.");
+        await page.EvaluateAsync("() => document.body?.remove()");
+    }
+
 }
 
 internal sealed class MockAuthenticationServer : IAsyncDisposable
@@ -665,6 +860,16 @@ internal sealed class MockAuthenticationServer : IAsyncDisposable
             var variant = request.Query["variant"].ToString();
             var session = request.Cookies["mock_session"];
             return Results.Content(Render(variant, session), "text/html; charset=utf-8");
+        });
+        app.MapGet("/settings/general-settings", (HttpRequest request) =>
+        {
+            var session = request.Cookies["mock_session"];
+            return Results.Content(GeneralSettingsHtml(session), "text/html; charset=utf-8");
+        });
+        app.MapGet("/settings/account", (HttpRequest request) =>
+        {
+            var session = request.Cookies["mock_session"];
+            return Results.Content(AccountSettingsHtml(session), "text/html; charset=utf-8");
         });
         await app.StartAsync();
         var server = app.Services.GetRequiredService<IServer>();
@@ -720,10 +925,49 @@ internal sealed class MockAuthenticationServer : IAsyncDisposable
     private static string HomeHtml(string session, string variant)
     {
         var observedEmail = variant == "identity-mismatch" ? "different@example.test" : session;
+        var localized = variant.Contains("-vi", StringComparison.OrdinalIgnoreCase);
+        var displayName = localized ? "Người dùng tổng hợp" : "Synthetic User";
+        var hasAccountSettings = variant.Contains("account-settings", StringComparison.OrdinalIgnoreCase);
+        var settingsOnlyEmail = variant.Contains("settings-only-email", StringComparison.OrdinalIgnoreCase);
+        var multipleEmails = variant.Contains("multiple-emails", StringComparison.OrdinalIgnoreCase);
+        var accountButtonText = hasAccountSettings
+            ? settingsOnlyEmail || multipleEmails ? displayName : $"{displayName} {observedEmail}"
+            : observedEmail;
         var identityMenu = variant == "identity-unavailable"
             ? string.Empty
-            : $"<button id=\"account-menu\" data-testid=\"account-menu\" aria-label=\"Account menu\">{System.Net.WebUtility.HtmlEncode(observedEmail)}</button>";
-        return $"<main><h1>Welcome home</h1><p>New chat</p><p>Signed in as {System.Net.WebUtility.HtmlEncode(observedEmail)}</p>{identityMenu}<button>Sign out</button></main>";
+            : $"<button id=\"account-menu\" data-testid=\"account-menu\" aria-label=\"Account menu\" data-account-email=\"{System.Net.WebUtility.HtmlEncode(observedEmail)}\" data-account-display-name=\"{System.Net.WebUtility.HtmlEncode(displayName)}\">{System.Net.WebUtility.HtmlEncode(accountButtonText)}</button>";
+        var accountUi = hasAccountSettings
+            ? $"<script>{AccountUiScriptBody(variant)}\ninstallAccountMenu();</script>"
+            : string.Empty;
+        return $"<main><h1>Welcome home</h1><p>New chat</p><p>Signed in as {System.Net.WebUtility.HtmlEncode(observedEmail)}</p>{identityMenu}<button>Sign out</button>{accountUi}</main>";
+    }
+
+    private static string GeneralSettingsHtml(string? session)
+    {
+        var email = System.Net.WebUtility.HtmlEncode(session ?? string.Empty);
+        return $"""
+<!doctype html>
+<html><head><meta charset="utf-8"><title>General settings</title></head>
+<body><aside><button data-testid="account-menu" aria-label="Account menu">Account</button><button>Đăng xuất</button></aside>
+<main><h1>Cài đặt chung</h1><p>Ngôn ngữ</p><button>Tài khoản</button><p>{email}</p></main></body></html>
+""";
+    }
+
+    private static string AccountSettingsHtml(string? session)
+    {
+        var email = System.Net.WebUtility.HtmlEncode(session ?? string.Empty);
+        const int delay = 900;
+        return $$"""
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Account settings</title></head>
+<body><aside><button>Tài khoản</button></aside>
+<main><h1>Tài khoản</h1><section id="account-details"><p>Đang tải thông tin tài khoản...</p></section></main>
+<script>
+setTimeout(() => {
+  document.querySelector('#account-details').innerHTML = '<div>Email</div><div>{{email}}</div><div>Trạng thái tài khoản</div><div>free</div>';
+}, {{delay}});
+</script></body></html>
+""";
     }
 
     private static string LoginHtml(string variant)
@@ -733,16 +977,18 @@ internal sealed class MockAuthenticationServer : IAsyncDisposable
 <body><main><h1>Sign in</h1><label>Email</label><input id="mobile-auth-email" type="email" autocomplete="email" aria-label="Email"><button id="continue" type="button">Continue</button></main>
 <script>
 const variant = "__VARIANT__";
+__ACCOUNT_UI_SCRIPT__
 let email = "";
 function error(text) { document.body.innerHTML = "<main><h1>Login error</h1><p>" + text + "</p></main>"; }
 function home() {
   document.cookie = "mock_session=" + encodeURIComponent(email) + "; Max-Age=3600; Path=/; SameSite=Lax";
-  const identityMenu = variant === "identity-unavailable" ? "" : "<button id=\"account-menu\" data-testid=\"account-menu\" aria-label=\"Account menu\"></button>";
-  document.body.innerHTML = "<main><h1>Welcome home</h1><p>New chat</p><p id=\"signed-in-as\"></p>" + identityMenu + "<button>Sign out</button></main>";
   const observedEmail = variant === "identity-mismatch" ? "different@example.test" : email;
+  const identityMenu = variant === "identity-unavailable" ? "" : "<button id=\"account-menu\" data-testid=\"account-menu\" aria-label=\"Account menu\" data-account-email=\"" + observedEmail + "\" data-account-display-name=\"" + accountDisplayName + "\">" + (accountSettingsEnabled ? accountDisplayName + (accountEmailInMenu && !accountSurfaceHasMultipleEmails ? " " + observedEmail : "") : observedEmail) + "</button>";
+  document.body.innerHTML = "<main><h1>Welcome home</h1><p>New chat</p><p id=\"signed-in-as\"></p>" + identityMenu + "<button>Sign out</button></main>";
   document.querySelector("#signed-in-as").textContent = "Signed in as " + observedEmail;
   const accountMenu = document.querySelector("#account-menu");
-  if (accountMenu) accountMenu.textContent = observedEmail;
+  if (accountMenu && !accountSettingsEnabled) accountMenu.textContent = observedEmail;
+  if (accountSettingsEnabled) installAccountMenu();
 }
 function mfa() {
   document.body.innerHTML = "<main><h1>Authenticator challenge</h1><input id=\"code\" name=\"code\" inputmode=\"numeric\" autocomplete=\"one-time-code\" aria-label=\"Authenticator code\"><button id=\"totp-continue\" type=\"button\">Continue</button><p id=\"error\"></p></main>";
@@ -784,7 +1030,75 @@ document.querySelector("#continue").addEventListener("click", () => {
   }
 });
 </script></body></html>
-""".Replace("__VARIANT__", variant, StringComparison.Ordinal);
+"""
+            .Replace("__VARIANT__", variant, StringComparison.Ordinal)
+            .Replace("__ACCOUNT_UI_SCRIPT__", AccountUiScriptBody(variant), StringComparison.Ordinal);
+
+    private static string AccountUiScriptBody(string variant)
+    {
+        var localized = variant.Contains("-vi", StringComparison.OrdinalIgnoreCase);
+        var delayed = variant.Contains("delayed", StringComparison.OrdinalIgnoreCase);
+        var hasAccountSettings = variant.Contains("account-settings", StringComparison.OrdinalIgnoreCase);
+        var settingsLabel = localized ? "Cài đặt" : "Settings";
+        var accountLabel = localized ? "Tài khoản" : "Account";
+        var planText = localized ? "Gói: Free" : "Plan: Plus";
+        var mfaText = localized ? "Bảo mật: Đã bật MFA" : "MFA configuration: Enabled";
+        return """
+const accountSettingsEnabled = "__ACCOUNT_SETTINGS_ENABLED__" === "true";
+const accountDisplayName = "__ACCOUNT_DISPLAY_NAME__";
+const accountSettingsLabel = "__ACCOUNT_SETTINGS_LABEL__";
+const accountSectionLabel = "__ACCOUNT_SECTION_LABEL__";
+const accountPlanText = "__ACCOUNT_PLAN_TEXT__";
+const accountMfaText = "__ACCOUNT_MFA_TEXT__";
+const accountSettingsDelayMs = Number("__ACCOUNT_SETTINGS_DELAY_MS__");
+const accountEmailInMenu = "__ACCOUNT_EMAIL_IN_MENU__" === "true";
+const accountSurfaceHasMultipleEmails = "__ACCOUNT_SURFACE_HAS_MULTIPLE_EMAILS__" === "true";
+function installAccountMenu() {
+  const accountButton = document.querySelector("#account-menu");
+  if (!accountButton || accountButton.dataset.accountUiInstalled === "true") return;
+  accountButton.dataset.accountUiInstalled = "true";
+  accountButton.addEventListener("click", () => {
+    document.querySelector("[data-testid='account-menu-content']")?.remove();
+    const menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("data-testid", "account-menu-content");
+    const email = accountButton.dataset.accountEmail || "";
+    const menuEmail = accountEmailInMenu ? email : "";
+    const alternateEmail = accountSurfaceHasMultipleEmails ? "<div>other-account@example.test</div>" : "";
+    menu.innerHTML = "<div data-testid='account-name'>" + accountDisplayName + "</div><div>" + menuEmail + "</div>" + alternateEmail + "<button type='button' aria-label='" + accountSettingsLabel + "' data-testid='settings-entry'>" + accountSettingsLabel + "</button>";
+    document.body.appendChild(menu);
+    menu.querySelector("button")?.addEventListener("click", () => {
+      const renderSettings = () => {
+        menu.remove();
+        const dialog = document.createElement("div");
+        dialog.setAttribute("role", "dialog");
+        dialog.setAttribute("aria-label", accountSettingsLabel);
+        dialog.setAttribute("data-testid", "account-settings-dialog");
+        const alternateEmail = accountSurfaceHasMultipleEmails ? "<div>Workspace member</div><div>other-account@example.test</div>" : "";
+        dialog.innerHTML = "<button type='button'>" + accountSectionLabel + "</button><div>" + accountSectionLabel + "</div><div>Email</div><div>" + email + "</div>" + alternateEmail + "<div>" + accountPlanText + "</div><div>" + accountMfaText + "</div>";
+        document.body.appendChild(dialog);
+      };
+      if (accountSettingsDelayMs > 0) setTimeout(renderSettings, accountSettingsDelayMs); else renderSettings();
+    });
+  });
+}
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    document.querySelector("[data-testid='account-menu-content']")?.remove();
+    document.querySelector("[role='dialog']")?.remove();
+  }
+});
+"""
+            .Replace("__ACCOUNT_SETTINGS_ENABLED__", hasAccountSettings ? "true" : "false", StringComparison.Ordinal)
+            .Replace("__ACCOUNT_DISPLAY_NAME__", System.Text.Json.JsonSerializer.Serialize(localized ? "Người dùng tổng hợp" : "Synthetic User").Trim('"'), StringComparison.Ordinal)
+            .Replace("__ACCOUNT_SETTINGS_LABEL__", settingsLabel, StringComparison.Ordinal)
+            .Replace("__ACCOUNT_SECTION_LABEL__", accountLabel, StringComparison.Ordinal)
+            .Replace("__ACCOUNT_PLAN_TEXT__", planText, StringComparison.Ordinal)
+            .Replace("__ACCOUNT_MFA_TEXT__", mfaText, StringComparison.Ordinal)
+            .Replace("__ACCOUNT_SETTINGS_DELAY_MS__", delayed ? "450" : "0", StringComparison.Ordinal)
+            .Replace("__ACCOUNT_EMAIL_IN_MENU__", variant.Contains("settings-only-email", StringComparison.OrdinalIgnoreCase) ? "false" : "true", StringComparison.Ordinal)
+            .Replace("__ACCOUNT_SURFACE_HAS_MULTIPLE_EMAILS__", variant.Contains("multiple-emails", StringComparison.OrdinalIgnoreCase) ? "true" : "false", StringComparison.Ordinal);
+    }
 
     private static string ModalGuestHtml(string loginText, string continueText, string extraContinueButton)
         => """

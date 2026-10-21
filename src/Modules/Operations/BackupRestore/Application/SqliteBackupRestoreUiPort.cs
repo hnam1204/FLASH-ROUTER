@@ -12,7 +12,6 @@ namespace FlashAI.Modules.BackupRestore.Application;
 
 public sealed class SqliteBackupRestoreUiPort : IBackupRestoreUiPort
 {
-    private static readonly SemaphoreSlim BackupGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -186,7 +185,7 @@ public sealed class SqliteBackupRestoreUiPort : IBackupRestoreUiPort
         string backupType,
         CancellationToken cancellationToken)
     {
-        await BackupGate.WaitAsync(cancellationToken);
+        await BackupMaintenanceGate.Semaphore.WaitAsync(cancellationToken);
         var backupId = Guid.NewGuid();
         var backupDirectory = Path.Combine(_paths.Backups, backupId.ToString("N"));
         var tempDirectory = Path.Combine(_paths.Temp, "backup-" + backupId.ToString("N"));
@@ -268,13 +267,13 @@ public sealed class SqliteBackupRestoreUiPort : IBackupRestoreUiPort
         finally
         {
             TryDeleteDirectory(tempDirectory);
-            BackupGate.Release();
+            BackupMaintenanceGate.Semaphore.Release();
         }
     }
 
     private async Task<RestoreReport> ValidateRestoreAsync(Guid backupId, CancellationToken cancellationToken)
     {
-        await BackupGate.WaitAsync(cancellationToken);
+        await BackupMaintenanceGate.Semaphore.WaitAsync(cancellationToken);
         var restoreDirectory = Path.Combine(_paths.TestData, "be06-restore-" + Guid.NewGuid().ToString("N"));
         var restoreDatabase = Path.Combine(restoreDirectory, "database.sqlite");
 
@@ -369,7 +368,7 @@ public sealed class SqliteBackupRestoreUiPort : IBackupRestoreUiPort
         finally
         {
             TryDeleteDirectory(restoreDirectory);
-            BackupGate.Release();
+            BackupMaintenanceGate.Semaphore.Release();
         }
     }
 

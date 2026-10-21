@@ -16,7 +16,7 @@
                 <th class="col-account">Email / Tài khoản</th>
                 <th class="col-status">Trạng thái</th>
                 <th class="col-session">Trạng thái phiên</th>
-                <th class="col-mfa">2FA</th>
+                <th class="col-mfa">Xác minh 2 bước</th>
                 <th class="col-updated" @onclick="ToggleSort">
                     <div class="sortable-header">
                         <span>Cập nhật cuối</span>
@@ -141,7 +141,7 @@
                                     <button type="button"
                                             class="table-btn btn-primary"
                                             @onclick="() => OnOpenAccount.InvokeAsync(account)"
-                                            title="Mở trình duyệt trực tiếp">
+                                            title="Mở ChatGPT trong managed session; không tự gửi credential">
                                         Mở
                                     </button>
                                 }
@@ -162,30 +162,6 @@
                                     Sửa
                                 </button>
 
-                                <div class="more-menu-wrapper">
-                                    <button type="button"
-                                            class="table-btn btn-more"
-                                            @onclick="() => ToggleRowMenu(account.AccountId)"
-                                            aria-label="Thao tác khác"
-                                            title="Thao tác khác">
-                                        ⋮
-                                    </button>
-
-                                    @if (_openRowMenuId == account.AccountId)
-                                    {
-                                        <div class="row-dropdown-menu">
-                                            <button type="button" class="dropdown-item" @onclick="() => CopyAccount(account.AccountId)">
-                                                Sao chép tài khoản
-                                            </button>
-                                            <button type="button" class="dropdown-item" @onclick="() => OnOpenAccount.InvokeAsync(account)">
-                                                Khởi chạy Chromium
-                                            </button>
-                                            <button type="button" class="dropdown-item danger" @onclick="() => TriggerDelete(account)">
-                                                Xóa tài khoản
-                                            </button>
-                                        </div>
-                                    }
-                                </div>
                             </div>
                         </td>
                     </tr>
@@ -197,7 +173,7 @@
     <!-- Pagination Footer -->
     <div class="table-pagination-footer">
         <div class="pagination-info">
-            Hiển thị @StartItem - @EndItem của @TotalCount account
+            Hiển thị @StartItem - @EndItem trong @TotalCount tài khoản
         </div>
 
         <div class="pagination-controls">
@@ -248,8 +224,6 @@
     [Parameter] public EventCallback<AccountListItemVm> OnOpenAccount { get; set; }
     [Parameter] public EventCallback<AccountListItemVm> OnLoginAgain { get; set; }
     [Parameter] public EventCallback<AccountListItemVm> OnEditAccount { get; set; }
-    [Parameter] public EventCallback<AccountListItemVm> OnDeleteAccount { get; set; }
-    [Parameter] public EventCallback<Guid> OnCopyAccount { get; set; }
     [Parameter] public EventCallback OnToggleSort { get; set; }
 
     [Parameter] public int CurrentPage { get; set; } = 1;
@@ -257,8 +231,6 @@
     [Parameter] public int TotalCount { get; set; }
     [Parameter] public EventCallback<int> OnPageChanged { get; set; }
     [Parameter] public EventCallback<int> OnPageSizeChanged { get; set; }
-
-    private Guid? _openRowMenuId;
 
     private bool IsAllSelected => Accounts.Count > 0 && Accounts.All(a => CheckedAccountIds.Contains(a.AccountId));
 
@@ -268,7 +240,6 @@
 
     private async Task HandleSelectAccount(Guid accountId)
     {
-        _openRowMenuId = null;
         await OnAccountSelected.InvokeAsync(accountId);
     }
 
@@ -313,23 +284,6 @@
         await OnToggleSort.InvokeAsync();
     }
 
-    private void ToggleRowMenu(Guid id)
-    {
-        _openRowMenuId = _openRowMenuId == id ? null : id;
-    }
-
-    private async Task CopyAccount(Guid accountId)
-    {
-        _openRowMenuId = null;
-        await OnCopyAccount.InvokeAsync(accountId);
-    }
-
-    private async Task TriggerDelete(AccountListItemVm account)
-    {
-        _openRowMenuId = null;
-        await OnDeleteAccount.InvokeAsync(account);
-    }
-
     private static bool IsActive(AccountListItemVm account)
         => account.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase);
     private static bool IsUnverified(string status) => status.Equals("Unverified", StringComparison.OrdinalIgnoreCase);
@@ -355,9 +309,18 @@
 
     private static string FormatPlan(string plan, string provider)
     {
-        return string.IsNullOrWhiteSpace(plan) || plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase)
-            ? "Chưa xác minh"
-            : plan;
+        if (string.IsNullOrWhiteSpace(plan) || plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Gói chưa xác minh";
+        }
+
+        var label = plan.Trim().ToLowerInvariant() switch
+        {
+            "free" => "Miễn phí",
+            "team" => "Nhóm",
+            _ => plan
+        };
+        return $"Gói đã lưu: {label}";
     }
 
     private static string GetSessionText(AccountListItemVm account)

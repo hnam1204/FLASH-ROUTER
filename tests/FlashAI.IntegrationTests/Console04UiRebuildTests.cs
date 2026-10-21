@@ -88,7 +88,9 @@ public sealed class Console04UiRebuildTests
 
         // Header and Theme Toggle
         Assert.Contains("FLASH ROUTER", consoleRazor, StringComparison.Ordinal);
-        Assert.Contains("AI Auto Login Console", consoleRazor, StringComparison.Ordinal);
+        Assert.Contains("Quản lý tập trung", consoleRazor, StringComparison.Ordinal);
+        Assert.DoesNotContain("Cấp quyền live provider", consoleRazor, StringComparison.Ordinal);
+        Assert.DoesNotContain("plan_type", consoleRazor, StringComparison.Ordinal);
         Assert.Contains("ToggleThemeAsync", consoleRazor, StringComparison.Ordinal);
         Assert.Contains("theme-toggle-btn", consoleRazor, StringComparison.Ordinal);
 
@@ -122,6 +124,39 @@ public sealed class Console04UiRebuildTests
         Assert.Contains("var(--app-surface)", consoleCss, StringComparison.Ordinal);
         Assert.Contains("var(--app-console)", consoleCss, StringComparison.Ordinal);
         Assert.Contains("var(--accent-primary)", consoleCss, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AccountInspectorShowsOneAutomaticVerifiedQuotaWidgetWithoutManualRefreshMenu()
+    {
+        var root = WorkspaceRoot();
+        var inspector = File.ReadAllText(Path.Combine(root, "FLASH ROUTER", "Components", "Console", "Components", "AccountInspector.razor"));
+        var accountsTable = File.ReadAllText(Path.Combine(root, "FLASH ROUTER", "Components", "Console", "Components", "AccountsTable.razor"));
+        var console = File.ReadAllText(Path.Combine(root, "FLASH ROUTER", "Components", "Console", "AutoLoginConsole.razor"));
+
+        Assert.Contains("ChatGPTWeb", inspector, StringComparison.Ordinal);
+        Assert.Contains("CodexCLI", inspector, StringComparison.Ordinal);
+        Assert.Contains("Gói và hạn mức", inspector, StringComparison.Ordinal);
+        Assert.DoesNotContain("usage-refresh-btn", inspector, StringComparison.Ordinal);
+        Assert.DoesNotContain("more-menu-wrapper", accountsTable, StringComparison.Ordinal);
+        Assert.DoesNotContain("Khởi chạy Chromium", accountsTable, StringComparison.Ordinal);
+        Assert.Contains("CheckPlanAndQuotaAfterLoginAsync(accountId)", console, StringComparison.Ordinal);
+        Assert.Contains("IsAuthenticatedProviderSession(result)", console, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AccountDeletionRequiresExplicitPermanentConfirmation()
+    {
+        var root = WorkspaceRoot();
+        var inspector = File.ReadAllText(Path.Combine(root, "FLASH ROUTER", "Components", "Console", "Components", "AccountInspector.razor"));
+        var dialog = File.ReadAllText(Path.Combine(root, "FLASH ROUTER", "Components", "Console", "Components", "DeleteAccountDialog.razor"));
+        var console = File.ReadAllText(Path.Combine(root, "FLASH ROUTER", "Components", "Console", "AutoLoginConsole.razor"));
+
+        Assert.Contains("Xóa vĩnh viễn", inspector, StringComparison.Ordinal);
+        Assert.Contains("Xóa tài khoản vĩnh viễn", dialog, StringComparison.Ordinal);
+        Assert.Contains("@bind=\"_confirmedEmail\"", dialog, StringComparison.Ordinal);
+        Assert.Contains("@bind=\"_acknowledged\"", dialog, StringComparison.Ordinal);
+        Assert.Contains("PermanentAccountDeletion.DeletePermanentlyAsync(request.AccountId, request.ConfirmedEmail)", console, StringComparison.Ordinal);
     }
 
     [Fact]

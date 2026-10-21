@@ -1,45 +1,82 @@
 @namespace FLASH_ROUTER.Components.Console.Components
 @using FlashAI.Modules.Accounts.Contracts
 
-@if (IsOpen && Account != null)
+@if (IsOpen && Account is not null)
 {
     <div class="flash-overlay-backdrop" @onclick="HandleClose">
-        <div class="flash-modal-card delete-account-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+        <div class="flash-modal-card delete-account-modal" @onclick:stopPropagation="true" role="alertdialog" aria-modal="true" aria-labelledby="delete-account-title" aria-describedby="delete-account-description">
             <div class="flash-modal-header danger-header">
-                <div class="header-danger-icon">
+                <div class="header-danger-icon" aria-hidden="true">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="10"></circle>
                         <line x1="12" y1="8" x2="12" y2="12"></line>
                         <line x1="12" y1="16" x2="12.01" y2="16"></line>
                     </svg>
                 </div>
-                <h3 id="delete-account-title" class="flash-modal-title">Xác nhận xóa tài khoản</h3>
-                <button type="button" class="flash-modal-close-btn" @onclick="HandleClose" aria-label="Đóng">✕</button>
+                <h3 id="delete-account-title" class="flash-modal-title">Xóa tài khoản vĩnh viễn</h3>
+                <button type="button" class="flash-modal-close-btn" @onclick="HandleClose" disabled="@IsBusy" aria-label="Đóng">✕</button>
             </div>
 
-            <div class="flash-modal-body">
+            <div class="flash-modal-body" id="delete-account-description">
                 <p class="delete-warning-text">
-                    Bạn có chắc chắn muốn xóa tài khoản <strong>@Account.Email</strong> (@Account.DisplayName) khỏi danh sách quản lý không?
+                    Tài khoản <strong>@Account.Email</strong> sẽ bị xóa khỏi ứng dụng và không thể khôi phục tại đây.
                 </p>
 
                 <div class="impact-notice-box">
-                    <span class="impact-notice-title">Chi tiết phạm vi tác động:</span>
+                    <span class="impact-notice-title">Dữ liệu sẽ bị xóa</span>
                     <ul class="impact-list">
-                        <li><strong>Bản ghi tài khoản:</strong> Sẽ bị xóa hoàn toàn khỏi cơ sở dữ liệu SQLite cục bộ.</li>
-                        <li><strong>Credential & Token:</strong> Khóa bí mật trong DPAPI Vault liên kết sẽ được giải phóng.</li>
-                        <li><strong>Hồ sơ trình duyệt:</strong> Browser profile cô lập tương ứng sẽ được dọn dẹp theo chính sách lưu trữ.</li>
+                        <li>Hồ sơ, ghi chú, thẻ và lịch sử hoạt động.</li>
+                        <li>Thông tin đăng nhập, token, khóa 2FA và dữ liệu gói/hạn mức đã đọc.</li>
+                        <li>Phiên Chrome riêng cùng hồ sơ trình duyệt của tài khoản.</li>
+                        <li>Các bản sao lưu cục bộ do ứng dụng quản lý.</li>
                     </ul>
                 </div>
+
+                <p class="delete-backup-note">Bản sao đã xuất hoặc chép ra ngoài thư mục ứng dụng không thể được ứng dụng này dọn.</p>
+
+                <label class="delete-confirm-label" for="delete-account-email">
+                    Nhập email để xác nhận
+                    <strong>@Account.Email</strong>
+                </label>
+                <input id="delete-account-email"
+                       class="delete-confirm-input"
+                       type="email"
+                       autocomplete="off"
+                       spellcheck="false"
+                       placeholder="Nhập email tài khoản"
+                       @bind="_confirmedEmail"
+                       @bind:event="oninput"
+                       disabled="@IsBusy" />
+
+                <label class="delete-confirm-checkbox">
+                    <input type="checkbox" @bind="_acknowledged" disabled="@IsBusy" />
+                    <span>Tôi hiểu thao tác này sẽ xóa vĩnh viễn dữ liệu trong ứng dụng.</span>
+                </label>
+
+                @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                {
+                    <div class="delete-error-message" role="alert">@ErrorMessage</div>
+                }
             </div>
 
             <div class="flash-modal-footer">
-                <button type="button" class="flash-btn flash-btn-outline" @onclick="HandleClose">Hủy</button>
-                <button type="button" class="flash-btn flash-btn-danger" @onclick="HandleConfirm">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    </svg>
-                    <span>Xóa tài khoản</span>
+                <button type="button" class="flash-btn flash-btn-outline" @onclick="HandleClose" disabled="@IsBusy">Hủy</button>
+                <button type="button"
+                        class="flash-btn flash-btn-danger"
+                        @onclick="HandleConfirm"
+                        disabled="@(!CanConfirm || IsBusy)">
+                    @if (IsBusy)
+                    {
+                        <span>Đang xóa…</span>
+                    }
+                    else
+                    {
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        <span>Xóa vĩnh viễn</span>
+                    }
                 </button>
             </div>
         </div>
@@ -49,20 +86,37 @@
 @code {
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public AccountDetailVm? Account { get; set; }
+    [Parameter] public bool IsBusy { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
-    [Parameter] public EventCallback<Guid> OnConfirmDelete { get; set; }
+    [Parameter] public EventCallback<(Guid AccountId, string ConfirmedEmail)> OnConfirmDelete { get; set; }
 
-    private async Task HandleConfirm()
+    private string _confirmedEmail = string.Empty;
+    private bool _acknowledged;
+    private bool _wasOpen;
+    private Guid? _confirmationAccountId;
+
+    private bool CanConfirm => Account is not null
+        && _acknowledged
+        && string.Equals(_confirmedEmail.Trim(), Account.Email.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnParametersSet()
     {
-        if (Account != null)
+        if (IsOpen && (!_wasOpen || _confirmationAccountId != Account?.AccountId))
         {
-            await OnConfirmDelete.InvokeAsync(Account.AccountId);
+            _confirmedEmail = string.Empty;
+            _acknowledged = false;
+            _confirmationAccountId = Account?.AccountId;
         }
-        await OnClose.InvokeAsync();
+
+        _wasOpen = IsOpen;
     }
 
-    private async Task HandleClose()
-    {
-        await OnClose.InvokeAsync();
-    }
+    private Task HandleConfirm()
+        => Account is not null && CanConfirm && !IsBusy
+            ? OnConfirmDelete.InvokeAsync((Account.AccountId, _confirmedEmail.Trim()))
+            : Task.CompletedTask;
+
+    private Task HandleClose()
+        => IsBusy ? Task.CompletedTask : OnClose.InvokeAsync();
 }

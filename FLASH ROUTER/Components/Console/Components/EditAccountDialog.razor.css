@@ -1,12 +1,32 @@
 .edit-account-modal {
-    max-width: 520px;
+    width: min(560px, calc(100vw - 32px));
+    max-width: 560px;
+    overflow: hidden;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .42);
+}
+
+.edit-account-modal .flash-modal-body {
+    max-height: min(70dvh, 680px);
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.edit-account-intro {
+    margin: 0 0 22px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
 }
 
 .modal-form-group {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
+}
+
+.modal-form-group:last-child {
+    margin-bottom: 0;
 }
 
 .modal-form-row {
@@ -20,7 +40,7 @@
 
 .form-label {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
 }
 
@@ -31,11 +51,71 @@
     background: var(--app-input);
     border: 1px solid var(--app-border);
     border-radius: var(--radius-md);
-    padding: 9px 12px;
+    min-height: 42px;
+    padding: 10px 13px;
     color: var(--text-primary);
     font-size: 13.5px;
     box-sizing: border-box;
     transition: all var(--transition-fast);
+}
+
+.modal-textarea {
+    min-height: 96px;
+    resize: vertical;
+}
+
+.readonly-field {
+    display: flex;
+    align-items: center;
+    min-height: 42px;
+    padding: 0 13px;
+    border: 1px solid var(--app-border);
+    border-radius: var(--radius-md);
+    background: var(--app-surface-secondary);
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.radio-options-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.radio-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--app-border);
+    border-radius: var(--radius-md);
+    background: var(--app-surface-secondary);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.radio-label:has(input:checked) {
+    border-color: color-mix(in srgb, var(--accent-primary) 65%, var(--app-border));
+    background: color-mix(in srgb, var(--accent-primary) 12%, var(--app-surface));
+    color: var(--text-primary);
+}
+
+.radio-label input {
+    accent-color: var(--accent-primary);
+}
+
+.field-help {
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+@media (max-width: 560px) {
+    .edit-account-modal .flash-modal-body {
+        padding: 18px;
+    }
 }
 
 .readonly-input {

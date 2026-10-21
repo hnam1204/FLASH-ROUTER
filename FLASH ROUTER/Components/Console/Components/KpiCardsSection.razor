@@ -13,14 +13,14 @@
                 </svg>
             </div>
             <div class="kpi-content">
-                <span class="kpi-label">Tổng account</span>
+                <span class="kpi-label">Tổng tài khoản</span>
                 <span class="kpi-value">@TotalAccounts</span>
                 <span class="kpi-subtext">Từ nguồn dữ liệu hiện tại</span>
             </div>
         </div>
     </div>
 
-    <!-- Card 2: Connected accounts -->
+    <!-- Card 2: Confirmed browser sessions, independent of identity verification. -->
     <div class="kpi-card">
         <div class="kpi-card-inner">
             <div class="kpi-icon-badge kpi-icon-green">
@@ -29,7 +29,7 @@
                 </svg>
             </div>
             <div class="kpi-content">
-                <span class="kpi-label">Đã xác minh phiên</span>
+                <span class="kpi-label">Đã xác nhận phiên</span>
                 <span class="kpi-value">@ActiveAccounts</span>
                 <div class="kpi-progress-row">
                     <div class="kpi-progress-bar">
@@ -41,7 +41,7 @@
         </div>
     </div>
 
-    <!-- Card 3: Cần xác minh -->
+    <!-- Card 3: Accounts whose provider identity is not verified. -->
     <div class="kpi-card">
         <div class="kpi-card-inner">
             <div class="kpi-icon-badge kpi-icon-amber">
@@ -51,7 +51,7 @@
                 </svg>
             </div>
             <div class="kpi-content">
-                <span class="kpi-label">Cần xác minh</span>
+                <span class="kpi-label">Cần xác minh danh tính</span>
                 <span class="kpi-value">@UnverifiedAccounts</span>
                 <div class="kpi-progress-row">
                     <div class="kpi-progress-bar">

@@ -14,18 +14,14 @@
                     <path d="M14 8h4M14 12h4M14 16h3"></path>
                 </svg>
             </div>
-            <strong>Chưa chọn account</strong>
+            <strong>Chưa chọn tài khoản</strong>
             <span>Chọn một dòng trong danh sách để xem thông tin đã ghi nhận.</span>
         </div>
     }
     else
     {
         <div class="inspector-header">
-            <div>
-                <span class="inspector-eyebrow">ACCOUNT INSPECTOR</span>
-                <h2 class="inspector-title">Thông tin tài khoản</h2>
-            </div>
-            <span class="inspector-id">#@Account.NumericId</span>
+            <h2 class="inspector-title">Chi tiết tài khoản</h2>
         </div>
 
         <div class="inspector-body">
@@ -40,146 +36,86 @@
                         </span>
                     </div>
                     <span class="identity-email" title="@Account.Email">@Account.Email</span>
-                    <span class="identity-plan">@FormatPlan(Account.RecordedPlan)</span>
                 </div>
             </section>
 
-            <section class="detail-section" aria-labelledby="identity-details-title">
+            <section class="detail-section account-status-section" aria-labelledby="account-status-title">
                 <div class="section-heading">
-                    <h3 id="identity-details-title">Định danh</h3>
-                    <span>Thông tin đã lưu</span>
-                </div>
-                <div class="detail-grid">
-                    <div class="detail-item detail-item-wide">
-                        <span class="detail-label">Email</span>
-                        <div class="detail-value-row">
-                            <span class="detail-value detail-value-truncate" title="@Account.Email">@Account.Email</span>
-                            <button type="button" class="copy-icon-btn" @onclick="HandleCopyAccount" title="Sao chép tài khoản" aria-label="Sao chép tài khoản">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <rect width="14" height="14" x="8" y="8" rx="2"></rect>
-                                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2-2-2h10c1.1 0 2 .9 2 2"></path>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Nền tảng</span>
-                        <span class="detail-value">@FormatProviderName(Account.Provider)</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Gói ghi nhận</span>
-                        <span class="detail-value">@FormatPlan(Account.RecordedPlan)</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Trạng thái danh tính</span>
-                        <span class="state-chip @GetIdentityStateClass(Account.IdentityVerificationState)">@FormatIdentityState(Account.IdentityVerificationState)</span>
-                    </div>
-                    <div class="detail-item detail-item-wide">
-                        <span class="detail-label">Email được provider xác minh</span>
-                        <span class="detail-value">@(Account.LastObservedProviderEmail ?? "Chưa có bằng chứng")</span>
-                    </div>
-                    <div class="detail-item detail-item-wide">
-                        <span class="detail-label">Nguồn identity</span>
-                        <span class="detail-value">@(Account.LastIdentityEvidenceSource ?? "Chưa ghi nhận")</span>
-                    </div>
-                </div>
-            </section>
-
-            <section class="detail-section" aria-labelledby="security-details-title">
-                <div class="section-heading">
-                    <h3 id="security-details-title">Bảo mật</h3>
-                    <span>Không giải mã trong UI</span>
-                </div>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <span class="detail-label">Credential reference</span>
-                        <span class="state-chip @(IsCredentialReady(Account) ? "state-success" : "state-neutral")">@GetCredentialReferenceText(Account)</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">2FA</span>
-                        <span class="state-chip @(Has2Fa(Account) ? "state-success" : "state-neutral")">@GetTwoFactorText(Account)</span>
-                    </div>
-                    <div class="detail-item detail-item-wide">
-                        <span class="detail-label">Nguồn dữ liệu</span>
-                        <span class="detail-value">@Account.DataSource</span>
-                    </div>
-                </div>
-            </section>
-
-            <section class="detail-section" aria-labelledby="session-details-title">
-                <div class="section-heading">
-                    <h3 id="session-details-title">Browser session</h3>
-                    <span>Trạng thái quan sát</span>
+                    <h3 id="account-status-title">Trạng thái</h3>
                 </div>
                 <div class="session-observation">
                     <div class="observation-line">
-                        <span class="detail-label">Trạng thái phiên</span>
-                        <span class="state-chip @GetSessionStateClass(Account)">@GetSessionStateText(Account)</span>
-                    </div>
-                    <div class="observation-line">
-                        <span class="detail-label">Browser runtime</span>
-                        <span class="state-chip @GetRuntimeStateClass()">@GetRuntimeStateText()</span>
-                    </div>
-                    <div class="observation-line">
-                        <span class="detail-label">Kiểm tra gần nhất</span>
-                        <span class="detail-value">@FormatDate(Account.LastBrowserSessionObservedAtUtc ?? Account.LastCheckedAt)</span>
-                    </div>
-                    <div class="observation-line">
-                        <span class="detail-label">Xác nhận phiên</span>
-                        <span class="detail-value">@FormatDate(Account.LastAuthenticatedSessionConfirmedAtUtc)</span>
-                    </div>
-                    <div class="observation-line">
-                        <span class="detail-label">Identity state</span>
+                        <span class="detail-label">Danh tính</span>
                         <span class="state-chip @GetIdentityStateClass(Account.IdentityVerificationState)">@FormatIdentityState(Account.IdentityVerificationState)</span>
                     </div>
                     <div class="observation-line">
-                        <span class="detail-label">Last attempt</span>
-                        <span class="detail-value">@FormatAttempt(Account.LastAuthenticationAttemptId)</span>
-                    </div>
-                    <div class="observation-line">
-                        <span class="detail-label">Nguồn bằng chứng</span>
-                        <span class="detail-value">@(Account.LastObservationEvidenceSource ?? "Chưa ghi nhận")</span>
-                    </div>
-                    <div class="observation-line">
-                        <span class="detail-label">Mã lỗi an toàn</span>
-                        <span class="detail-value">@(Account.LastObservationErrorCode ?? "Không có")</span>
-                    </div>
-                    <div class="observation-line">
-                        <span class="detail-label">Cập nhật account</span>
-                        <span class="detail-value">@FormatDate(Account.UpdatedAt)</span>
+                        <span class="detail-label">Trình duyệt</span>
+                        <span class="state-chip @GetRuntimeStateClass()">@GetRuntimeStateText()</span>
                     </div>
                 </div>
             </section>
 
             <section class="detail-section usage-section" aria-labelledby="usage-details-title">
-                <div class="section-heading">
-                    <h3 id="usage-details-title">Usage &amp; Quota</h3>
-                    <span>Chỉ dữ liệu có nguồn tin cậy</span>
+                <div class="usage-widget-heading">
+                    <div class="usage-brand">
+                        <div>
+                            <h3 id="usage-details-title">Gói và hạn mức</h3>
+                            <span class="usage-identity">@GetQuotaSourceLabel()</span>
+                        </div>
+                    </div>
+                    @if (GetCodexPlanType() is string plan)
+                    {
+                        <span class="usage-plan-badge">@FormatPlanType(plan)</span>
+                    }
                 </div>
-                @if (Usage != null && Usage.Snapshots.Count > 0)
+                @if (GetCodexQuotaRows().Any(usage => usage.IsStale))
                 {
-                    <div class="usage-list">
-                        @foreach (var usage in Usage.Snapshots.Take(5))
+                    <div class="usage-refresh-status is-stale" role="status">Dữ liệu gần nhất đã cũ</div>
+                }
+                @if (GetCodexQuotaRows().Any())
+                {
+                    <div class="codex-quota-list">
+                        @foreach (var usage in GetCodexQuotaRows())
                         {
-                            <div class="usage-row">
-                                <div>
-                                    <strong>@usage.Capability</strong>
-                                    <span>@usage.CapabilityStatus · @usage.Status · @usage.Scope</span>
+                            var remaining = GetRemainingPercentage(usage);
+                            <div class="codex-quota-row">
+                                <div class="codex-quota-label">
+                                    <strong>@FormatUsageWindow(usage)</strong>
+                                    <span>@(remaining is decimal value ? $"{value:0.#}% còn lại" : "Chưa có số liệu")</span>
                                 </div>
-                                <div class="usage-values">
-                                    <span>@FormatUsageValue(usage.UsedValue, usage.Unit) / @FormatUsageValue(usage.LimitValue, usage.Unit)</span>
-                                    <small>@(usage.RemainingValue.HasValue ? $"Còn {FormatUsageValue(usage.RemainingValue, usage.Unit)}" : "Remaining: chưa có nguồn")</small>
-                                </div>
+                                @if (remaining is decimal percent)
+                                {
+                                    <div class="codex-quota-progress" role="progressbar" aria-label="@FormatUsageWindow(usage), còn @percent.ToString("0.#") phần trăm" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@percent">
+                                        <span style="width:@percent.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                                    </div>
+                                }
+                                @if (usage.ResetAtUtc is DateTimeOffset resetAt)
+                                {
+                                    <small>Làm mới @resetAt.ToLocalTime().ToString("dd/MM HH:mm")</small>
+                                }
                             </div>
                         }
                     </div>
                 }
                 else
                 {
-                    <div class="activity-empty">Chưa có quan sát Usage nào cho account này.</div>
+                    <div class="usage-empty" role="status">
+                        @(IsUsageRefreshRunning
+                            ? "Đang đọc gói và hạn mức từ phiên ChatGPT…"
+                            : string.IsNullOrWhiteSpace(UsageRefreshMessage)
+                                ? "Đăng nhập tài khoản để tự động đọc gói và hạn mức."
+                                : UsageRefreshMessage)
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(UsageRefreshMessage) && GetCodexQuotaRows().Any())
+                {
+                    <div class="usage-refresh-status" role="status">@UsageRefreshMessage</div>
+                }
+                @if (GetCodexLastUpdated() is DateTimeOffset updatedAt)
+                {
+                    <div class="usage-last-updated">Cập nhật @updatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
                 }
             </section>
-
             <section class="notes-section" aria-labelledby="notes-title">
                 <div class="section-heading">
                     <h3 id="notes-title">Ghi chú</h3>
@@ -202,60 +138,38 @@
             </section>
 
             <section class="actions-section" aria-label="Hành động tài khoản">
-                <button type="button" class="action-btn btn-launch" @onclick="() => OnOpenAccount.InvokeAsync(Account)" title="Khởi chạy trình duyệt ngay">
-                    <span>Mở trình duyệt</span>
+                <button type="button" class="action-btn btn-launch" @onclick="() => OnOpenAccount.InvokeAsync(Account)" title="@BrowserActionTitle">
+                    <span>@BrowserActionLabel</span>
                 </button>
-                <button type="button" class="action-btn btn-edit" @onclick="() => OnCloseBrowser.InvokeAsync(Account)" title="Đóng đúng browser của account này">
-                    <span>Đóng trình duyệt</span>
-                </button>
-                <button type="button" class="action-btn btn-relogin" @onclick="() => OnLoginAgain.InvokeAsync(Account)" title="Thực hiện quy trình đăng nhập lại">
+                @if (BrowserRuntime?.RuntimeState == AccountBrowserRuntimeState.Open)
+                {
+                    <button type="button" class="action-btn btn-edit" @onclick="() => OnCloseBrowser.InvokeAsync(Account)" title="Đóng phiên trình duyệt của tài khoản này">
+                        <span>Đóng trình duyệt</span>
+                    </button>
+                }
+                <button type="button" class="action-btn btn-relogin" @onclick="() => OnLoginAgain.InvokeAsync(Account)" title="Đăng nhập lại tài khoản này">
                     <span>Đăng nhập lại</span>
                 </button>
                 <button type="button" class="action-btn btn-edit" @onclick="() => OnEditAccount.InvokeAsync(Account)" title="Chỉnh sửa thông tin tài khoản">
                     <span>Sửa thông tin</span>
                 </button>
-                <button type="button" class="action-btn btn-edit" @onclick="HandleCopyAccount" title="Sao chép tài khoản với xác nhận riêng">
+                <button type="button" class="action-btn btn-copy" @onclick="HandleCopyAccount" title="Sao chép thông tin đăng nhập sau khi xác nhận">
                     <span>Sao chép tài khoản</span>
                 </button>
-                <button type="button" class="action-btn btn-delete" @onclick="() => OnDeleteAccount.InvokeAsync(Account)" title="Xóa tài khoản khỏi hệ thống">
-                    <span>Xóa account</span>
+                <button type="button" class="action-btn btn-delete" @onclick="() => OnDeleteAccount.InvokeAsync(Account)" title="Xóa vĩnh viễn tài khoản cùng dữ liệu liên quan">
+                    <span>Xóa vĩnh viễn</span>
                 </button>
             </section>
 
             <section class="activity-section" aria-labelledby="activity-title">
                 <div class="section-heading">
-                    <h3 id="activity-title">Hoạt động gần đây</h3>
+                    <h3 id="activity-title">Nhật ký hoạt động</h3>
                     <div class="activity-heading-actions">
-                        <span>@ActivityEvents.Count sự kiện</span>
-                        <button type="button" class="activity-console-btn" @onclick="() => OnOpenConsoleLog.InvokeAsync(Account.AccountId)" title="Mở Console Log">
-                            <span aria-hidden="true">›_</span> Console Log
+                        <button type="button" class="activity-console-btn" @onclick="() => OnOpenConsoleLog.InvokeAsync(Account.AccountId)" title="Mở nhật ký hoạt động">
+                            Xem nhật ký
                         </button>
                     </div>
                 </div>
-                @if (ActivityEvents.Count > 0)
-                {
-                    <div class="activity-list">
-                        @foreach (var ev in ActivityEvents.Take(5))
-                        {
-                            <div class="activity-item">
-                                <span class="activity-dot @GetSeverityDotClass(ev.Severity)" aria-hidden="true"></span>
-                                <div class="activity-info">
-                                    <span class="activity-summary">
-                                        <span class="severity-tag @ev.Severity.ToLowerInvariant()">[@FormatSeverity(ev.Severity)]</span>
-                                        @ev.Summary
-                                    </span>
-                                    <span class="activity-time">@ev.Timestamp.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-                else
-                {
-                    <div class="activity-empty">
-                        Chưa có sự kiện hoạt động nào được ghi nhận cho account này.
-                    </div>
-                }
             </section>
         </div>
     }
@@ -266,6 +180,9 @@
     [Parameter] public IReadOnlyList<ActivityEventVm> ActivityEvents { get; set; } = [];
     [Parameter] public BrowserRuntimeSnapshot? BrowserRuntime { get; set; }
     [Parameter] public AccountUsageView? Usage { get; set; }
+    [Parameter] public bool IsUsageRefreshRunning { get; set; }
+    [Parameter] public string? UsageRefreshMessage { get; set; }
+    [Parameter] public ProviderAccountObservationSnapshot? Observation { get; set; }
     [Parameter] public EventCallback<AccountDetailVm> OnOpenAccount { get; set; }
     [Parameter] public EventCallback<AccountDetailVm> OnLoginAgain { get; set; }
     [Parameter] public EventCallback<AccountDetailVm> OnCloseBrowser { get; set; }
@@ -278,6 +195,22 @@
     private string _editableNotes = "";
     private Guid? _currentAccountId;
     private bool _isDirty => Account != null && _editableNotes != (Account.Notes ?? "");
+    private bool HasActiveManagedAttempt
+        => BrowserRuntime is { RuntimeState: AccountBrowserRuntimeState.Open, ActiveAttemptId: not null };
+    private bool HasPendingManagedLogin
+        => HasActiveManagedAttempt
+            && BrowserRuntime?.AuthenticationState != AuthenticationObservationStatus.AuthenticatedSessionConfirmed;
+    private string BrowserActionLabel
+        => HasPendingManagedLogin ? "Tiếp tục đăng nhập" : HasActiveManagedAttempt ? "Kiểm tra phiên" : "Mở trình duyệt";
+    private string BrowserActionTitle
+        => HasPendingManagedLogin
+            ? "Tiếp tục trong đúng cửa sổ Chrome đang mở; không gửi lại thông tin đăng nhập"
+            : HasActiveManagedAttempt
+                ? "Kiểm tra phiên ChatGPT trong cửa sổ đang mở"
+                : "Mở phiên trình duyệt ChatGPT của tài khoản này";
+
+    private ProviderAccountFieldEvidence? ObservationField(ProviderAccountObservationField field)
+        => Observation?.Fields.FirstOrDefault(item => item.Field == field);
 
     protected override void OnParametersSet()
     {
@@ -312,18 +245,163 @@
         => account.Tags?.Any(t => t.Contains("2fa", StringComparison.OrdinalIgnoreCase)) == true;
 
     private static string GetTwoFactorText(AccountDetailVm account)
-        => Has2Fa(account) ? "Đã ghi nhận" : "Chưa xác minh";
+        => Has2Fa(account) ? "Đã lưu mã xác minh hai bước" : "Chưa lưu mã xác minh hai bước";
+
+    private static string FormatProviderEvidence(ProviderAccountFieldEvidence? field, string unavailableLabel)
+    {
+        if (field is null)
+        {
+            return unavailableLabel;
+        }
+
+        if (field.Field == ProviderAccountObservationField.Email
+            && field.EvidenceType == "VerifiedChatGptUsageBindingV1")
+        {
+            return "Đã khớp với tài khoản đang chọn";
+        }
+
+        if (field.Field == ProviderAccountObservationField.Plan
+            && field.Status == ProviderAccountObservationFieldStatus.Observed
+            && !string.IsNullOrWhiteSpace(field.Value))
+        {
+            return FormatPlanType(field.Value);
+        }
+
+        if (field.Field == ProviderAccountObservationField.MfaConfiguration
+            && field.Status == ProviderAccountObservationFieldStatus.Observed
+            && !string.IsNullOrWhiteSpace(field.Value))
+        {
+            return field.Value.Trim().ToLowerInvariant() switch
+            {
+                "unknown" => "Chưa xác minh",
+                "enabled" or "true" => "Đã bật",
+                "disabled" or "false" => "Đã tắt",
+                _ => "Đã ghi nhận"
+            };
+        }
+
+        if (field.Field == ProviderAccountObservationField.UsageQuota
+            && field.Status == ProviderAccountObservationFieldStatus.Observed
+            && field.EvidenceType == "ChatGptWebUsageV1"
+            && ChatGptWebUsageSnapshotCodec.TryDeserialize(field.Value, out var usage)
+            && usage is not null)
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(usage.PlanType))
+            {
+                parts.Add($"Gói {FormatPlanType(usage.PlanType)}");
+            }
+            AddWindowSummary(usage.PrimaryWindow);
+            AddWindowSummary(usage.SecondaryWindow);
+            return parts.Count > 0 ? string.Join(" · ", parts) : "ChatGPT chưa cung cấp hạn mức";
+
+            void AddWindowSummary(ChatGptUsageWindowSnapshot? window)
+            {
+                if (window is null)
+                {
+                    return;
+                }
+
+                var label = window.LimitWindowSeconds is long seconds
+                    ? FormatWindowDuration(seconds)
+                    : "Hạn mức";
+                var detail = window.UsedPercent is decimal percent
+                    ? $"còn {Math.Clamp(100m - percent, 0m, 100m):0.#}% · đã dùng {percent:0.#}%"
+                    : "đang cập nhật";
+                if (window.ResetAtUtc is DateTimeOffset resetAt)
+                {
+                    detail += $" · làm mới {resetAt.ToLocalTime():dd/MM HH:mm}";
+                }
+                else if (window.ResetAfterSeconds is long resetAfter)
+                {
+                    detail += $" · làm mới sau {FormatWindowDuration(resetAfter)}";
+                }
+                parts.Add($"{label}: {detail}");
+            }
+        }
+
+        return field.Status switch
+        {
+            ProviderAccountObservationFieldStatus.Observed when !string.IsNullOrWhiteSpace(field.Value) => field.Value,
+            ProviderAccountObservationFieldStatus.Unsupported => "Chưa có dữ liệu phù hợp; không hiển thị số ước tính",
+            ProviderAccountObservationFieldStatus.Failed => "Không thể đọc",
+            _ => unavailableLabel
+        };
+    }
+
+    private static string FormatEvidenceStatus(ProviderAccountFieldEvidence? field)
+        => field?.Status switch
+        {
+            ProviderAccountObservationFieldStatus.Observed => field.EvidenceType == "VerifiedChatGptUsageBindingV1" ? "Đã xác minh" : "Đã ghi nhận",
+            ProviderAccountObservationFieldStatus.Unsupported => "Chưa có dữ liệu",
+            ProviderAccountObservationFieldStatus.Failed => "Đọc thất bại",
+            ProviderAccountObservationFieldStatus.Unavailable => "Chưa có dữ liệu",
+            _ => "Chưa ghi nhận"
+        };
+
+    private static string GetEvidenceStateClass(ProviderAccountFieldEvidence? field)
+        => field?.Status switch
+        {
+            ProviderAccountObservationFieldStatus.Observed => "state-success",
+            ProviderAccountObservationFieldStatus.Failed => "state-danger",
+            ProviderAccountObservationFieldStatus.Unsupported => "state-warning",
+            _ => "state-neutral"
+        };
+
+    private string GetMfaObservationText()
+    {
+        if (ActivityEvents.Any(item => item.EventType.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Phiên đã được xác nhận sau MFA";
+        }
+
+        if (ActivityEvents.Any(item => item.EventType.Equals("AdditionalMfaRequired", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.ErrorCode, "ADDITIONAL_MFA_REQUIRED", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Provider yêu cầu xác thực bổ sung";
+        }
+
+        if (ActivityEvents.Any(item => item.EventType.Equals("HumanActionRequired", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Đang chờ thao tác thủ công trong Chrome";
+        }
+
+        return ActivityEvents.Any(item => item.EventType.Equals("TotpSubmitted", StringComparison.OrdinalIgnoreCase))
+            ? "Đã gửi mã; đang chờ ChatGPT xác nhận"
+            : "Chưa quan sát bước gửi mã";
+    }
+
+    private string GetCandidateProfileText()
+    {
+        if (ActivityEvents.Any(item => item.EventType.Equals("CandidatePromotionCommitted", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Đã thay hồ sơ sau khi xác minh tài khoản";
+        }
+
+        if (ActivityEvents.Any(item => item.EventType.Equals("CandidateReadyForPromotion", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Đang chờ xác minh; hồ sơ hiện tại vẫn được giữ nguyên";
+        }
+
+        if (ActivityEvents.Any(item => item.EventType.Equals("CandidateReadyForObservation", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Đang kiểm tra hồ sơ đăng nhập mới; hồ sơ hiện tại vẫn được giữ nguyên";
+        }
+
+        return "Không có hồ sơ mới cần xác minh";
+    }
 
     private static bool IsCredentialReady(AccountDetailVm account)
         => account.CredentialReferencePresent;
 
     private static string GetCredentialReferenceText(AccountDetailVm account)
-        => IsCredentialReady(account) ? "Đã lưu tham chiếu" : "Chưa ghi nhận";
+        => IsCredentialReady(account) ? "Đã lưu trong kho bảo mật" : "Chưa ghi nhận";
 
     private static string GetSessionStateText(AccountDetailVm account)
         => account.AuthenticationState switch
         {
-            "AuthenticatedSessionConfirmed" => "Đăng nhập thành công",
+            "AuthenticatedSessionConfirmed" => "Phiên đã xác thực",
+            "PostLoginPending" => "Đang chờ ChatGPT xác nhận mã",
             "LoginInProgress" or "MfaRequired" => "Đang xác minh phiên",
             "WaitingForUser" => "Cần thao tác người dùng",
             "InvalidCredentials" => "Thông tin không hợp lệ",
@@ -333,7 +411,7 @@
     private static string GetSessionStateClass(AccountDetailVm account)
         => account.AuthenticationState == "AuthenticatedSessionConfirmed"
             ? "state-success"
-            : account.AuthenticationState is "InvalidCredentials" or "WaitingForUser" ? "state-warning" : "state-neutral";
+            : account.AuthenticationState is "PostLoginPending" or "InvalidCredentials" or "WaitingForUser" ? "state-warning" : "state-neutral";
 
     private string GetRuntimeStateText()
         => BrowserRuntime?.RuntimeState switch
@@ -357,8 +435,185 @@
             _ => "state-neutral"
         };
 
+    private static string FormatCloseReason(BrowserCloseReason reason)
+        => reason switch
+        {
+            BrowserCloseReason.UserRequested => "Người dùng yêu cầu",
+            BrowserCloseReason.LeaseExpired => "Lease hết hạn",
+            BrowserCloseReason.CancellationRequested => "Đã hủy attempt",
+            BrowserCloseReason.ContextDisposed => "Playwright context đã dispose",
+            BrowserCloseReason.BrowserProcessExited => "Browser process đã thoát",
+            BrowserCloseReason.NavigationFailure => "Lỗi navigation",
+            _ => "Chưa xác định"
+        };
+
     private static string FormatUsageValue(decimal? value, string? unit)
-        => value.HasValue ? $"{value.Value:0.##} {unit}" : "Chưa có nguồn";
+        => value.HasValue
+            ? string.Equals(unit, "percent", StringComparison.OrdinalIgnoreCase)
+                ? $"{value.Value:0.#}%"
+                : $"{value.Value:0.##} {unit}"
+            : "Chưa có nguồn";
+
+    private static string FormatPlanType(string value)
+        => value.Trim().ToLowerInvariant() switch
+        {
+            "free" => "Miễn phí",
+            "plus" => "Plus",
+            "pro" => "Pro",
+            "team" => "Nhóm",
+            "business" => "Business",
+            "enterprise" => "Enterprise",
+            _ => value
+        };
+
+    private string? GetCodexPlanType()
+        => GetCodexQuotaRows()
+            .Select(item => item.PlanType)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+    private string GetQuotaSourceLabel()
+    {
+        var product = GetCodexQuotaRows().Select(item => item.ProductId).FirstOrDefault();
+        if (string.Equals(product, "ChatGPTWeb", StringComparison.OrdinalIgnoreCase)) return "ChatGPT";
+        if (string.Equals(product, "CodexCLI", StringComparison.OrdinalIgnoreCase)) return "Codex CLI";
+        return IsUsageRefreshRunning ? "Đang đồng bộ" : "Chưa có dữ liệu";
+    }
+
+    private IEnumerable<AccountUsageSnapshot> GetCodexQuotaRows()
+    {
+        if (Account is null || Usage is null || Usage.AccountId != Account.AccountId)
+        {
+            return [];
+        }
+
+        var candidates = Usage.Snapshots
+            .Where(usage => IsVerifiedCodexUsage(usage)
+                && usage.AccountId == Account.AccountId
+                && !usage.CapabilityStatus.Equals("Unsupported", StringComparison.OrdinalIgnoreCase)
+                && usage.IdentityBindingStatus is UsageIdentityBindingStatus.ProviderIdentityVerified or UsageIdentityBindingStatus.ConnectionScoped)
+            .ToArray();
+        if (candidates.Length == 0)
+        {
+            return [];
+        }
+
+        // Only render one coherent snapshot. Prefer the source observed most
+        // recently so an authenticated ChatGPT refresh immediately replaces an
+        // older CLI snapshot without mixing windows from different sessions.
+        var newestProduct = candidates
+            .GroupBy(usage => usage.ProductId, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(group => group.Max(usage => usage.ObservedAtUtc))
+            .Select(group => group.Key)
+            .First();
+
+        return candidates
+            .Where(usage => string.Equals(usage.ProductId, newestProduct, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(usage => usage.WindowDurationSeconds ?? long.MaxValue)
+            .ToArray();
+    }
+
+    private string GetCodexIdentity()
+    {
+        var identity = GetCodexQuotaRows()
+            .Select(item => item.VerifiedAccountIdentity)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        if (identity is null)
+        {
+            return "Danh tính chưa xác minh";
+        }
+
+        var at = identity.IndexOf('@');
+        return at > 2 ? $"{identity[..2]}…{identity[at..]}" : identity;
+    }
+
+    private DateTimeOffset? GetCodexLastUpdated()
+        => GetCodexQuotaRows()
+            .Select(item => (DateTimeOffset?)item.ObservedAtUtc)
+            .Max();
+
+    private static bool IsVerifiedCodexUsage(AccountUsageSnapshot usage)
+        => (string.Equals(usage.ProductId, "CodexCLI", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(usage.ProductId, "ChatGPTWeb", StringComparison.OrdinalIgnoreCase))
+            && usage.Capability == FlashAI.Modules.Connections.Features.ProviderIntegration.Abstractions.ProviderCapability.Quota;
+
+    private static string FormatEvidenceSource(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return "Chưa ghi nhận";
+        }
+
+        if (source.Contains("Codex CLI", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Gói và hạn mức từ Codex CLI";
+        }
+        if (source.Contains("wham/usage", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Gói và hạn mức từ ChatGPT";
+        }
+        if (source.Contains("account-menu", StringComparison.OrdinalIgnoreCase)
+            || source.Contains("account UI", StringComparison.OrdinalIgnoreCase)
+            || source.Contains("Settings UI", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Giao diện tài khoản ChatGPT";
+        }
+        if (source.Contains("page-state", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Trang đăng nhập ChatGPT";
+        }
+
+        return "ChatGPT";
+    }
+
+    private static string FormatAccountDataSource(string? source)
+        => "Lưu trữ trong ứng dụng trên thiết bị này";
+
+    private static string FormatObservationError(string? code)
+        => code?.ToUpperInvariant() switch
+        {
+            null or "" => "Chưa có lỗi",
+            "ADDITIONAL_MFA_REQUIRED" => "ChatGPT yêu cầu xác minh thêm",
+            "ADDITIONAL_MFA_LEASE_EXPIRED" => "Hết thời gian xác minh. Đăng nhập lại để tiếp tục.",
+            "IDENTITY_EMAIL_MISMATCH" => "Tài khoản đăng nhập không khớp",
+            "IDENTITY_EMAIL_UNAVAILABLE" or "IDENTITY_EVIDENCE_INSUFFICIENT" => "Chưa xác minh được tài khoản",
+            "SESSION_NOT_CONFIRMED" or "USAGE_API_UNAUTHORIZED" => "Phiên chưa đăng nhập hoặc đã hết hạn",
+            "USAGE_API_RATE_LIMITED" => "ChatGPT đang giới hạn yêu cầu",
+            _ => "Chưa hoàn tất xác minh"
+        };
+
+    private static string FormatWindowDuration(long seconds)
+    {
+        if (seconds >= 3600 && seconds % 3600 == 0)
+        {
+            return $"{seconds / 3600} giờ";
+        }
+
+        if (seconds >= 60 && seconds % 60 == 0)
+        {
+            return $"{seconds / 60} phút";
+        }
+
+        return $"{seconds} giây";
+    }
+
+    private static decimal? GetRemainingPercentage(AccountUsageSnapshot usage)
+    {
+        var remaining = usage.RemainingPercentage
+            ?? (usage.UsedPercentage is >= 0 and <= 100 ? 100m - usage.UsedPercentage.Value : null);
+        return remaining is >= 0 and <= 100 ? remaining : null;
+    }
+
+    private static string FormatUsageWindow(AccountUsageSnapshot usage)
+        => usage.WindowType switch
+        {
+            AccountUsageWindowType.FiveHours => "5 giờ",
+            AccountUsageWindowType.Week => "1 tuần",
+            AccountUsageWindowType.BillingPeriod => "Kỳ thanh toán",
+            AccountUsageWindowType.Rolling => "Khoảng thời gian luân phiên",
+            AccountUsageWindowType.Other when usage.WindowDurationSeconds is long seconds => FormatWindowDuration(seconds),
+            AccountUsageWindowType.Other => "Khoảng thời gian khác",
+            _ => "Thời hạn chưa rõ"
+        };
 
     private static string GetStatusClass(AccountDetailVm account)
     {
@@ -411,21 +666,47 @@
     private static string FormatPlan(string plan)
         => string.IsNullOrWhiteSpace(plan) || plan.Equals("Chưa rõ", StringComparison.OrdinalIgnoreCase)
             ? "Chưa xác minh"
-            : plan;
+            : FormatPlanType(plan);
 
     private static string FormatDate(DateTimeOffset? value)
         => value.HasValue ? value.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "Chưa ghi nhận";
 
-    private static string FormatAttempt(Guid? attemptId)
-        => attemptId is Guid value ? value.ToString("N")[..12] : "Chưa có";
-
-    private static string FormatSeverity(string severity)
+    private static string FormatActivitySeverity(string severity)
         => severity.ToUpperInvariant() switch
         {
-            "SUCCESS" or "PASS" => "PASS",
-            "WARNING" or "WARN" => "WARN",
-            "ERROR" => "ERROR",
-            _ => "INFO"
+            "SUCCESS" or "PASS" => "Thành công",
+            "WARNING" or "WARN" => "Cảnh báo",
+            "ERROR" => "Lỗi",
+            _ => "Thông tin"
+        };
+
+    private static string FormatActivitySummary(ActivityEventVm item)
+        => item.EventType switch
+        {
+            "GuestLandingDetected" => "ChatGPT chưa đăng nhập",
+            "AdditionalMfaRequired" or "MfaRequired" => "ChatGPT yêu cầu xác minh thêm",
+            "TotpSubmitted" => "Đã gửi mã xác minh hai bước",
+            "AuthenticatedSessionConfirmed" => "Đã xác nhận phiên đăng nhập",
+            "BrowserSessionObserved" => "Đã kiểm tra phiên đăng nhập",
+            "OfficialNavigationStarted" => "Đang mở trang ChatGPT",
+            "OfficialNavigationSucceeded" or "OfficialChatGPTReached" => "Đã mở ChatGPT",
+            "IdentityResolutionPending" => "Đang xác minh tài khoản",
+            "IdentityResolutionPartial" or "IdentityResolutionUnsupported" => "Chưa đủ thông tin để xác minh tài khoản",
+            "ChatGptUsageApiObserved" => "Đã cập nhật gói và hạn mức",
+            "ChatGptUsageApiFailed" => "Chưa cập nhật được gói và hạn mức",
+            "AccountObservationStarted" => "Đang đọc thông tin tài khoản",
+            "AccountObservationCompleted" => "Đã cập nhật thông tin tài khoản",
+            "AccountObservationPartial" or "AccountObservationFailed" => "Chưa đọc đủ thông tin tài khoản",
+            "BrowserClosed" => "Đã đóng trình duyệt",
+            "BrowserCrashed" or "BrowserDisconnected" => "Trình duyệt đã dừng",
+            "AttemptCancelled" => "Đã dừng đăng nhập",
+            "CandidateReadyForPromotion" => "Hồ sơ đăng nhập mới đang chờ xác minh",
+            "CandidatePromotionCommitted" => "Đã lưu hồ sơ đăng nhập mới",
+            "AuthenticationAttemptCompleted" when item.ErrorCode == "ADDITIONAL_MFA_REQUIRED" => "ChatGPT yêu cầu xác minh thêm",
+            "AuthenticationAttemptCompleted" => "Quá trình đăng nhập chưa hoàn tất",
+            _ when item.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase) => "Có lỗi cần kiểm tra",
+            _ when item.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase) => "Cần hoàn tất một bước kiểm tra",
+            _ => "Có cập nhật tài khoản"
         };
 
     private static string GetSeverityDotClass(string severity)

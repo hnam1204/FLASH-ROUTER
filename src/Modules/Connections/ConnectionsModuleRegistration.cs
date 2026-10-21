@@ -71,6 +71,13 @@ public static class ConnectionsModuleRegistration
         services.AddSingleton<IAccountBrowserSessionRegistration>(serviceProvider =>
             serviceProvider.GetRequiredService<IAccountBrowserSessionManager>() as IAccountBrowserSessionRegistration
             ?? throw new InvalidOperationException("The account browser manager must support session registration."));
+        services.AddSingleton<IAccountDataObservationPort>(serviceProvider =>
+            serviceProvider.GetRequiredService<IAccountBrowserSessionManager>() as IAccountDataObservationPort
+            ?? throw new InvalidOperationException("The account browser manager must support account observation."));
+        services.AddSingleton<IAuthorizedAccountDataObservationPort>(serviceProvider =>
+            serviceProvider.GetRequiredService<IAccountBrowserSessionManager>() as IAuthorizedAccountDataObservationPort
+            ?? throw new InvalidOperationException("The account browser manager must support authorized account observation."));
+        services.AddSingleton<ILiveProviderCertificationCoordinator, LiveProviderCertificationCoordinator>();
         services.AddSingleton<BrowserProfileManager>();
         services.AddSingleton<IBrowserProfileManager>(serviceProvider =>
             serviceProvider.GetRequiredService<BrowserProfileManager>());
@@ -150,8 +157,17 @@ public static class ConnectionsModuleRegistration
             : new InMemoryProviderObservationStore());
         services.AddSingleton<IProviderObservationReader>(serviceProvider =>
             (IProviderObservationReader)serviceProvider.GetRequiredService<IProviderObservationWriter>());
+        services.AddSingleton<IProviderAccountObservationStore>(serviceProvider => integrated
+            ? new SqliteProviderAccountObservationStore(serviceProvider.GetRequiredService<IDbContextFactory<FlashAiDbContext>>())
+            : new InMemoryProviderAccountObservationStore());
+        services.AddSingleton<IProviderAccountObservationReader>(serviceProvider =>
+            (IProviderAccountObservationReader)serviceProvider.GetRequiredService<IProviderAccountObservationStore>());
         services.AddSingleton<IConnectionObservationsReader, ConnectionObservationsReader>();
         services.AddSingleton<IAccountUsageReader, AccountUsageReader>();
+        services.AddSingleton<IAccountUsageRefreshPort, AccountUsageRefreshService>();
+        services.AddSingleton<CodexCliUsageRefreshService>();
+        services.AddSingleton<ICodexCliUsageRefreshPort>(serviceProvider =>
+            serviceProvider.GetRequiredService<CodexCliUsageRefreshService>());
         services.AddSingleton<IProviderConnectionVerifier, ProviderConnectionVerifier>();
         services.AddSingleton<ProviderRateLimiter>();
         services.AddSingleton<IProviderSyncOrchestrator, ProviderSyncOrchestrator>();

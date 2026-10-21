@@ -154,13 +154,30 @@ public sealed class BrowserProfileManager : IBrowserProfileManager, IBrowserProf
     public async Task<BrowserProfilePromotionResult> PromoteCandidateAsync(
         Guid accountId,
         BrowserProfileSessionContext candidate,
+        IdentityVerificationStatus identityStatus,
         CancellationToken cancellationToken = default)
     {
-        if (accountId == Guid.Empty || candidate.AccountId != Guid.Empty && candidate.AccountId != accountId)
+        if (identityStatus != IdentityVerificationStatus.IdentityVerified)
+        {
+            return BrowserProfilePromotionResult.Failure(
+                "PROFILE_PROMOTION_IDENTITY_NOT_VERIFIED",
+                "Chỉ được promotion hồ sơ sau khi email provider khớp account đã chọn.");
+        }
+
+        if (accountId == Guid.Empty || candidate.AccountId != accountId)
         {
             return BrowserProfilePromotionResult.Failure(
                 "PROFILE_CANDIDATE_ACCOUNT_MISMATCH",
                 "Hồ sơ ứng viên không thuộc tài khoản đang xác thực.");
+        }
+
+        if (candidate.Binding.BindingId != candidate.BindingId
+            || candidate.Binding.AccountId != accountId
+            || !candidate.Binding.ProviderId.Equals(candidate.ProviderId, StringComparison.OrdinalIgnoreCase))
+        {
+            return BrowserProfilePromotionResult.Failure(
+                "PROFILE_CANDIDATE_METADATA_MISMATCH",
+                "Metadata của hồ sơ ứng viên không khớp với attempt đang xác thực.");
         }
 
         if (!IsAllowedProvider(candidate.ProviderId)

@@ -1,4 +1,5 @@
 using FlashAI.Modules.Connections.Features.ProviderIntegration.Abstractions;
+using FlashAI.Modules.Connections.Contracts;
 
 namespace FlashAI.Modules.Connections.Domain;
 
@@ -226,4 +227,98 @@ public sealed class ProviderSyncStateRecord
         FailureCount = Math.Max(0, failureCount);
         UpdatedAtUtc = updatedAtUtc;
     }
+}
+
+public sealed class ProviderAccountObservationRecord
+{
+    private ProviderAccountObservationRecord()
+    {
+    }
+
+    public ProviderAccountObservationRecord(
+        Guid id,
+        Guid accountId,
+        Guid attemptId,
+        Guid browserProfileBindingId,
+        string providerId,
+        string browserContextId,
+        DateTimeOffset observedAtUtc,
+        string locale,
+        bool authenticatedShellDetected,
+        bool accountMenuDetected,
+        string observationStatus,
+        string evidenceSurface,
+        string? failureReasonCode)
+    {
+        Id = id;
+        AccountId = accountId;
+        AttemptId = attemptId;
+        BrowserProfileBindingId = browserProfileBindingId;
+        ProviderId = providerId;
+        BrowserContextId = browserContextId;
+        ObservedAtUtc = observedAtUtc;
+        Locale = locale;
+        AuthenticatedShellDetected = authenticatedShellDetected;
+        AccountMenuDetected = accountMenuDetected;
+        ObservationStatus = observationStatus;
+        EvidenceSurface = evidenceSurface;
+        FailureReasonCode = failureReasonCode;
+    }
+
+    public Guid Id { get; private set; }
+    public Guid AccountId { get; private set; }
+    public Guid AttemptId { get; private set; }
+    public Guid BrowserProfileBindingId { get; private set; }
+    public string ProviderId { get; private set; } = string.Empty;
+    public string BrowserContextId { get; private set; } = string.Empty;
+    public DateTimeOffset ObservedAtUtc { get; private set; }
+    public string Locale { get; private set; } = string.Empty;
+    public bool AuthenticatedShellDetected { get; private set; }
+    public bool AccountMenuDetected { get; private set; }
+    public string ObservationStatus { get; private set; } = string.Empty;
+    public string EvidenceSurface { get; private set; } = string.Empty;
+    public string? FailureReasonCode { get; private set; }
+    public List<ProviderAccountObservationFieldRecord> Fields { get; private set; } = [];
+}
+
+public sealed class ProviderAccountObservationFieldRecord
+{
+    private ProviderAccountObservationFieldRecord()
+    {
+    }
+
+    public ProviderAccountObservationFieldRecord(
+        Guid id,
+        Guid observationId,
+        ProviderAccountObservationField field,
+        string? value,
+        string source,
+        string evidenceType,
+        string confidence,
+        ProviderAccountObservationFieldStatus status,
+        DateTimeOffset observedAtUtc,
+        string? failureReasonCode)
+    {
+        Id = id;
+        ObservationId = observationId;
+        Field = field;
+        Value = value;
+        Source = source;
+        EvidenceType = evidenceType;
+        Confidence = confidence;
+        Status = status;
+        ObservedAtUtc = observedAtUtc;
+        FailureReasonCode = failureReasonCode;
+    }
+
+    public Guid Id { get; private set; }
+    public Guid ObservationId { get; private set; }
+    public ProviderAccountObservationField Field { get; private set; }
+    public string? Value { get; private set; }
+    public string Source { get; private set; } = string.Empty;
+    public string EvidenceType { get; private set; } = string.Empty;
+    public string Confidence { get; private set; } = string.Empty;
+    public ProviderAccountObservationFieldStatus Status { get; private set; }
+    public DateTimeOffset ObservedAtUtc { get; private set; }
+    public string? FailureReasonCode { get; private set; }
 }

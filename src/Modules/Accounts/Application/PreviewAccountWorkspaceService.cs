@@ -3,7 +3,7 @@ using FlashAI.Modules.Accounts.Contracts;
 
 namespace FlashAI.Modules.Accounts.Application;
 
-public sealed class PreviewAccountWorkspaceService : IAccountWorkspaceReader, IAccountCommandPort, IAccountCatalog
+public sealed class PreviewAccountWorkspaceService : IAccountWorkspaceReader, IAccountCommandPort, IAccountCatalog, IPermanentAccountDeletionService
 {
     private readonly List<AccountDetailVm> _accounts = [];
 
@@ -213,16 +213,25 @@ public sealed class PreviewAccountWorkspaceService : IAccountWorkspaceReader, IA
         return Task.FromResult(OperationResultVm.Success("Đã khôi phục tài khoản."));
     }
 
-    public Task<OperationResultVm> DeleteAccountAsync(Guid accountId, CancellationToken cancellationToken = default)
+    public Task<OperationResultVm> DeletePermanentlyAsync(
+        Guid accountId,
+        string confirmedEmail,
+        CancellationToken cancellationToken = default)
     {
-        var index = _accounts.FindIndex(a => a.AccountId == accountId);
-        if (index == -1)
+        cancellationToken.ThrowIfCancellationRequested();
+        var index = _accounts.FindIndex(account => account.AccountId == accountId);
+        if (index < 0)
         {
             return Task.FromResult(OperationResultVm.Failure("NOT_FOUND", "Không tìm thấy tài khoản."));
         }
 
+        if (!string.Equals(_accounts[index].Email.Trim(), confirmedEmail?.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(OperationResultVm.Failure("CONFIRMATION_MISMATCH", "Email xác nhận không khớp."));
+        }
+
         _accounts.RemoveAt(index);
-        return Task.FromResult(OperationResultVm.Success("Đã xóa tài khoản khỏi bộ nhớ xem trước."));
+        return Task.FromResult(OperationResultVm.Success("Đã xóa vĩnh viễn tài khoản khỏi dữ liệu xem trước."));
     }
 
     private void SeedPreviewData()

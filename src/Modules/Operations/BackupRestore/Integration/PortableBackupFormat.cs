@@ -12,3 +12,9 @@ public static class PortableBackupFormat
 
     public const string VaultDirectoryName = "vault";
 }
+
+/// <summary>Serializes backup creation, validation, and account-scoped backup scrubbing.</summary>
+public static class BackupMaintenanceGate
+{
+    public static SemaphoreSlim Semaphore { get; } = new(1, 1);
+}

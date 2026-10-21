@@ -11,12 +11,16 @@
 @using Microsoft.JSInterop
 @inject IAccountWorkspaceReader AccountReader
 @inject IAccountCommandPort AccountCommand
+@inject IPermanentAccountDeletionService PermanentAccountDeletion
 @inject IBrowserProfileUiPort BrowserProfilePort
 @inject IAccountBrowserSessionManager BrowserSessionManager
+@inject ILiveProviderCertificationCoordinator LiveProviderCertification
 @inject IAccountUsageReader AccountUsageReader
+@inject IBrowserAuthOrchestrator BrowserAuthOrchestrator
 @inject ICleanBrowserReloginService CleanBrowserRelogin
 @inject IAccountCredentialUiPort CredentialPort
 @inject IAccountConnectionsReader AccountConnectionsReader
+@inject IProviderAccountObservationReader AccountObservationReader
 @inject IAccountCopyUiPort AccountCopyPort
 @inject IPlaywrightBrowserRuntime BrowserRuntime
 @inject IConsoleProviderRegistry ProviderRegistry
@@ -26,7 +30,7 @@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-<PageTitle>FLASH ROUTER | AI Auto Login Console</PageTitle>
+<PageTitle>FLASH ROUTER | Quản lý tài khoản</PageTitle>
 
 <div class="master-app-shell" data-theme-active="@_currentTheme">
     <!-- Single-page account workspace -->
@@ -44,7 +48,7 @@
                     <div class="page-title-group">
                         <div class="title-with-badge">
                             <h1 class="page-title">Quản lý tài khoản</h1>
-                            <span class="console-badge" title="FLASH ROUTER Master Console">AI Auto Login Console</span>
+                            <span class="console-badge" title="FLASH ROUTER">Quản lý tập trung</span>
                         </div>
                         <p class="page-subtitle">
                             Quản lý tập trung tài khoản, phiên đăng nhập và thông tin sử dụng trên nhiều nền tảng.
@@ -93,8 +97,6 @@
                                OnOpenAccount="HandleOpenAccount"
                                OnLoginAgain="HandleLoginAgain"
                                OnEditAccount="HandleEditAccount"
-                               OnDeleteAccount="HandleDeleteAccount"
-                               OnCopyAccount="HandleCopyAccount"
                                OnToggleSort="HandleToggleSort"
                                CurrentPage="@_currentPage"
                                PageSize="@_pageSize"
@@ -108,6 +110,9 @@
                               ActivityEvents="@_selectedAccountActivities"
                               BrowserRuntime="@_selectedBrowserRuntime"
                               Usage="@_selectedUsage"
+                              IsUsageRefreshRunning="@_isAutomationRunning"
+                              UsageRefreshMessage="@_usageRefreshMessage"
+                              Observation="@_selectedAccountObservation"
                               OnOpenAccount="HandleOpenAccountFromDetail"
                               OnLoginAgain="HandleLoginAgainFromDetail"
                               OnCloseBrowser="HandleCloseBrowserFromDetail"
@@ -134,6 +139,8 @@
     <!-- Delete Confirmation Dialog -->
     <DeleteAccountDialog IsOpen="@_isDeleteAccountOpen"
                          Account="@_accountToDelete"
+                         IsBusy="@_isPermanentDeleteRunning"
+                         ErrorMessage="@_permanentDeleteError"
                          OnClose="CloseDeleteAccountDialog"
                          OnConfirmDelete="HandleConfirmDeleteAccount" />
 
@@ -167,8 +174,8 @@
                     }
                 </div>
                 <div class="flash-modal-footer">
-                    <button type="button" class="btn-modal-secondary" @onclick="CancelCopyAccount">Hủy</button>
-                    <button type="button" class="btn-modal-primary" @onclick="ConfirmCopyAccount">Sao chép tài khoản</button>
+                    <button type="button" class="flash-btn flash-btn-outline btn-modal-secondary" @onclick="CancelCopyAccount">Hủy</button>
+                    <button type="button" class="flash-btn flash-btn-primary btn-modal-primary" @onclick="ConfirmCopyAccount">Sao chép tài khoản</button>
                 </div>
             </div>
         </div>
@@ -198,7 +205,7 @@
                         <option value="Warning">Cảnh báo</option>
                         <option value="Error">Lỗi</option>
                     </select>
-                    <input type="search" @bind="_consoleLogSearch" placeholder="Tìm trong nhật ký đã được làm sạch..." aria-label="Tìm nhật ký tự động hóa" />
+                    <input type="search" @bind="_consoleLogSearch" @bind:event="oninput" placeholder="Tìm trong nhật ký đã được làm sạch..." aria-label="Tìm nhật ký tự động hóa" />
                     <button type="button" class="@(_consoleLogAutoScroll ? "is-active" : "")" @onclick="ToggleConsoleLogAutoScroll">Tự cuộn: @(_consoleLogAutoScroll ? "Bật" : "Tắt")</button>
                     <button type="button" class="@(_consoleLogTechnicalDetails ? "is-active" : "")" @onclick="ToggleConsoleLogTechnicalDetails">Chi tiết kỹ thuật</button>
                     <button type="button" @onclick="ClearConsoleLogView">Xóa hiển thị</button>
@@ -223,7 +230,7 @@
                             <div class="console-log-line @(_consoleLogTechnicalDetails ? "has-technical-details" : "compact-message")">
                                 <span class="console-log-index">@line.ToString("000")</span>
                                 <span class="console-log-time">@ev.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
-                                <span class="console-log-severity @ev.Severity.ToLowerInvariant()">@FormatSeverity(ev.Severity).ToUpperInvariant()</span>
+                                <span class="console-log-severity @FormatSeverity(ev.Severity).ToLowerInvariant()">@FormatSeverity(ev.Severity).ToUpperInvariant()</span>
                                 @if (_consoleLogTechnicalDetails)
                                 {
                                     <span class="console-log-source">[@(ev.Source ?? "Activity")]</span>
@@ -266,6 +273,8 @@
     private List<ActivityEventVm> _selectedAccountActivities = [];
     private BrowserRuntimeSnapshot? _selectedBrowserRuntime;
     private AccountUsageView? _selectedUsage;
+    private string? _usageRefreshMessage;
+    private ProviderAccountObservationSnapshot? _selectedAccountObservation;
 
     private int _currentPage = 1;
     private int _pageSize = 10;
@@ -283,6 +292,8 @@
     private bool _isEditAccountOpen = false;
     private bool _isDeleteAccountOpen = false;
     private AccountDetailVm? _accountToDelete;
+    private bool _isPermanentDeleteRunning;
+    private string? _permanentDeleteError;
 
     // Automation progress dialog
     private bool _isAutomationDialogOpen = false;
@@ -310,7 +321,7 @@
         => _selectedAccountActivities
             .Where(item => !_clearedConsoleEvents.Contains(item))
             .Where(item => _consoleLogSeverity.Equals("all", StringComparison.OrdinalIgnoreCase)
-                || item.Severity.Equals(_consoleLogSeverity, StringComparison.OrdinalIgnoreCase))
+                || FormatSeverity(item.Severity).Equals(FormatSeverity(_consoleLogSeverity), StringComparison.OrdinalIgnoreCase))
             .Where(item => string.IsNullOrWhiteSpace(_consoleLogSearch)
                 || FormatConsoleEvent(item).Contains(_consoleLogSearch, StringComparison.OrdinalIgnoreCase)
                 || (_consoleLogTechnicalDetails && item.EventType.Contains(_consoleLogSearch, StringComparison.OrdinalIgnoreCase))
@@ -400,9 +411,10 @@
         // Calculate KPIs from actual real loaded accounts
         _totalAccountsCount = _allAccounts.Count;
         _activeAccountsCount = _allAccounts.Count(a => a.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase));
-        _unverifiedAccountsCount = _allAccounts.Count(a => !a.AuthenticationState.Equals("AuthenticatedSessionConfirmed", StringComparison.OrdinalIgnoreCase)
-            && !a.Status.Equals("ConnectionError", StringComparison.OrdinalIgnoreCase)
-            && !a.Status.Equals("Failed", StringComparison.OrdinalIgnoreCase));
+        // Identity verification is independent from browser-session confirmation;
+        // accounts without verified provider evidence remain actionable.
+        _unverifiedAccountsCount = _allAccounts.Count(a =>
+            !a.IdentityVerificationState.Equals("IdentityVerified", StringComparison.OrdinalIgnoreCase));
         _failedAccountsCount = _allAccounts.Count(a => a.Status.Equals("ConnectionError", StringComparison.OrdinalIgnoreCase) || a.Status.Equals("Failed", StringComparison.OrdinalIgnoreCase));
 
         ApplyFiltersAndPagination();
@@ -473,6 +485,8 @@
             _selectedAccountActivities = [];
             _selectedBrowserRuntime = null;
             _selectedUsage = null;
+            _usageRefreshMessage = null;
+            _selectedAccountObservation = null;
         }
 
         _selectedAccountId = accountId;
@@ -536,6 +550,15 @@
         catch
         {
             _selectedUsage = null;
+        }
+
+        try
+        {
+            _selectedAccountObservation = await AccountObservationReader.GetLatestAsync(accountId);
+        }
+        catch
+        {
+            _selectedAccountObservation = null;
         }
     }
 
@@ -621,8 +644,10 @@
 
     private void CloseDeleteAccountDialog()
     {
+        if (_isPermanentDeleteRunning) return;
         _isDeleteAccountOpen = false;
         _accountToDelete = null;
+        _permanentDeleteError = null;
     }
 
     private void CloseAutomationDialog() => _isAutomationDialogOpen = false;
@@ -728,42 +753,45 @@
         }
     }
 
-    private void HandleDeleteAccount(AccountListItemVm account)
-    {
-        _ = LoadAccountDetailAsync(account.AccountId).ContinueWith(_ =>
-        {
-            _accountToDelete = _selectedAccountDetail;
-            _isDeleteAccountOpen = true;
-            InvokeAsync(StateHasChanged);
-        });
-    }
-
     private void HandleDeleteAccountFromDetail(AccountDetailVm account)
     {
         _accountToDelete = account;
+        _permanentDeleteError = null;
         _isDeleteAccountOpen = true;
     }
 
-    private async Task HandleConfirmDeleteAccount(Guid accountId)
+    private async Task HandleConfirmDeleteAccount((Guid AccountId, string ConfirmedEmail) request)
     {
-        _isDeleteAccountOpen = false;
-        _accountToDelete = null;
+        _isPermanentDeleteRunning = true;
+        _permanentDeleteError = null;
         try
         {
-            var res = await AccountCommand.DeleteAccountAsync(accountId);
-            if (res.IsSuccess)
+            var res = await PermanentAccountDeletion.DeletePermanentlyAsync(request.AccountId, request.ConfirmedEmail);
+            if (!res.IsSuccess)
             {
-                if (_selectedAccountId == accountId)
-                {
-                    _selectedAccountId = null;
-                    _selectedAccountDetail = null;
-                }
-                await RefreshDataAsync();
+                _permanentDeleteError = res.Message ?? "Chưa thể xóa tài khoản. Hãy thử lại.";
+                return;
             }
+
+            _isDeleteAccountOpen = false;
+            _accountToDelete = null;
+            if (_selectedAccountId == request.AccountId)
+            {
+                _selectedAccountId = null;
+                _selectedAccountDetail = null;
+                _selectedAccountActivities = [];
+                _selectedAccountObservation = null;
+                _selectedUsage = null;
+            }
+            await RefreshDataAsync();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Error deleting account: {ex.Message}");
+            _permanentDeleteError = "Chưa thể hoàn tất xóa tài khoản. Hãy tải lại dữ liệu và thử lại.";
+        }
+        finally
+        {
+            _isPermanentDeleteRunning = false;
         }
     }
 
@@ -861,7 +889,40 @@
 
         await InvokeAsync(async () =>
         {
-            await LoadAccountDetailAsync(selectedAccountId);
+            if (_selectedAccountActivities.All(item => item.EventId != activityEvent.EventId))
+            {
+                _selectedAccountActivities = _selectedAccountActivities
+                    .Append(activityEvent)
+                    .OrderByDescending(item => item.Timestamp)
+                    .ThenByDescending(item => item.EventId)
+                    .Take(200)
+                    .ToList();
+            }
+
+            // Intermediate automation events do not invalidate the inspector's
+            // account/connection/usage projections. Reload only on durable state
+            // transitions that can change visible session or identity semantics.
+            if (RequiresAccountProjectionRefresh(activityEvent.EventType))
+            {
+                var detail = await AccountReader.GetAccountDetailAsync(selectedAccountId);
+                if (detail is not null)
+                {
+                    _selectedAccountDetail = detail with
+                    {
+                        CredentialReferencePresent = _selectedAccountDetail?.CredentialReferencePresent ?? false
+                    };
+                }
+
+                try
+                {
+                    _selectedBrowserRuntime = await BrowserSessionManager.GetStatusAsync(selectedAccountId);
+                }
+                catch
+                {
+                    // Keep the last runtime snapshot if a concurrent close occurs.
+                }
+            }
+
             StateHasChanged();
             if (_isConsoleLogOpen && _consoleLogAutoScroll)
             {
@@ -869,6 +930,20 @@
             }
         });
     }
+
+    private static bool RequiresAccountProjectionRefresh(string eventType)
+        => eventType is "AuthenticatedSessionConfirmed"
+            or "IdentityVerified"
+            or "IdentityUnverified"
+            or "IdentityMismatch"
+            or "CandidatePromotionCommitted"
+            or "CandidatePromotionFailed"
+            or "PostLoginPending"
+            or "CandidateReadyForObservation"
+            or "PendingCandidateLeaseExpired"
+            or "BrowserSessionRegistrationReleased"
+            or "PostLoginObservationTimedOut"
+            or "AttemptFailed";
 
     private async Task OpenConsoleLog(Guid accountId)
     {
@@ -987,9 +1062,18 @@
             "AttemptCancelled" => "Quá trình đăng nhập đã bị hủy",
             "PostLoginObservationTimedOut" or "ObservationTimedOut" => "Không thể xác minh phiên trong thời gian cho phép",
             "CandidateReadyForPromotion" => "Hồ sơ đăng nhập mới đang chờ xác nhận thay thế",
+            "PromotionBlocked" => "Chưa đủ điều kiện thay thế profile chính",
+            "PromotionApproved" => "Identity đã khớp; profile được duyệt promotion",
             "CandidatePromotionCommitted" => "Đã ghi nhận hồ sơ trình duyệt mới",
+            "PromotionCommitted" => "Đã commit thay đổi profile chính",
             "CandidatePromotionFailed" => "Không thể ghi nhận hồ sơ trình duyệt mới",
-            "AutoLoginCompleted" or "AuthenticationAttemptCompleted" => "Đã hoàn tất quy trình xác thực",
+            "PromotionFailed" => "Promotion profile thất bại; profile cũ được giữ nguyên",
+            "AutoLoginCompleted" => "Auto Login đã hoàn tất với phiên đã xác nhận",
+            "AdditionalMfaRequired" => "Provider yêu cầu xác thực bổ sung",
+            "HumanActionRequired" => "Cần thao tác thủ công trong Chrome",
+            "AuthenticationAttemptCompleted" when item.ErrorCode == "ADDITIONAL_MFA_REQUIRED" => "Provider yêu cầu xác thực bổ sung",
+            "AuthenticationAttemptCompleted" when item.ErrorCode == "REPEATED_FILL_BLOCKED" => "Đã chặn thao tác xác thực lặp lại",
+            "AuthenticationAttemptCompleted" => "Quy trình xác thực dừng ở trạng thái chưa xác minh",
             _ when item.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase) => "Quy trình gặp lỗi cần kiểm tra",
             _ => item.Summary
         };
@@ -1002,6 +1086,7 @@
             "LoginInProgress" => "Đang đăng nhập",
             "MfaRequired" => "Cần MFA",
             "WaitingForUser" => "Cần thao tác người dùng",
+            "PostLoginPending" => "Đang chờ xác nhận sau TOTP",
             _ => string.IsNullOrWhiteSpace(state) ? "Chưa xác minh" : state
         };
 
@@ -1037,12 +1122,13 @@
     private async Task ExecuteBrowserLaunch(Guid accountId, string email)
     {
         _automationCts?.Cancel();
+        _automationCts?.Dispose();
         _automationCts = new CancellationTokenSource();
 
-        _automationDialogTitle = "Mở trình duyệt cô lập";
+        _automationDialogTitle = "Mở phiên ChatGPT được quản lý";
         _automationStage = "Khởi chạy";
-        _automationStatusMessage = $"Đang chuẩn bị hồ sơ Chromium cô lập cho {email}...";
-        _automationTechnicalDetail = "Kiểm tra quyền sở hữu Chromium và tài nguyên hồ sơ...";
+        _automationStatusMessage = $"Đang mở phiên ChatGPT được quản lý cho {email}...";
+        _automationTechnicalDetail = "Dùng profile riêng của account; không tự điền hoặc gửi password/TOTP.";
         _isAutomationRunning = true;
         _isAutomationSuccess = false;
         _isAutomationDialogOpen = true;
@@ -1050,37 +1136,230 @@
 
         try
         {
-            var launchResult = await BrowserSessionManager.OpenAsync(accountId, _automationCts.Token);
-
-            if (launchResult.IsSuccess)
+            var current = await BrowserSessionManager.GetStatusAsync(accountId, _automationCts.Token);
+            BrowserAuthResult result;
+            if (current.RuntimeState == AccountBrowserRuntimeState.Open
+                && current.ActiveAttemptId is Guid activeAttemptId)
             {
-                _automationStage = "Hoàn tất";
-                _automationStatusMessage = $"Đã mở cửa sổ trình duyệt Chromium thành công cho tài khoản {email}.";
-                _automationTechnicalDetail = $"Runtime: {launchResult.Snapshot.RuntimeState}; profile ownership is account-scoped.";
-                _isAutomationRunning = false;
-                _isAutomationSuccess = true;
-                await RefreshDataAsync();
+                _automationDialogTitle = current.AuthenticationState == AuthenticationObservationStatus.AuthenticatedSessionConfirmed
+                    ? "Kiểm tra phiên ChatGPT"
+                    : "Tiếp tục đăng nhập ChatGPT";
+                _automationStatusMessage = "Đang kiểm tra cửa sổ Chrome của tài khoản đang chọn...";
+                _automationTechnicalDetail = "Giữ nguyên cửa sổ này để hoàn tất challenge. Ứng dụng chỉ quan sát lại trạng thái và không gửi lại mật khẩu hoặc mã xác minh.";
+                StateHasChanged();
+                result = await BrowserAuthOrchestrator.RefreshAsync(activeAttemptId, _automationCts.Token);
             }
             else
             {
-                _automationStage = "Không thể mở";
-                _automationStatusMessage = launchResult.Message;
-                _automationTechnicalDetail = $"Trạng thái mã lỗi: {launchResult.Status}";
-                _isAutomationRunning = false;
-                _isAutomationSuccess = false;
+                if (current.RuntimeState == AccountBrowserRuntimeState.Open)
+                {
+                    var closeResult = await BrowserSessionManager.CloseAsync(accountId, _automationCts.Token);
+                    if (!closeResult.IsSuccess && closeResult.Status != "ALREADY_CLOSED")
+                    {
+                        _automationStage = "Không thể giải phóng profile";
+                        _automationStatusMessage = closeResult.Message;
+                        _automationTechnicalDetail = "Không thể giải phóng phiên trình duyệt. Đóng cửa sổ Chrome rồi thử lại.";
+                        _isAutomationRunning = false;
+                        _isAutomationSuccess = false;
+                        return;
+                    }
+                }
+
+                result = await BrowserAuthOrchestrator.StartAsync(accountId, _automationCts.Token);
+            }
+
+            _activeAutomationAttemptId = result.AttemptId;
+            _automationStage = result.State switch
+            {
+                BrowserAuthState.BrowserSessionObserved when result.ObservationResult?.IdentityStatus == IdentityVerificationStatus.IdentityVerified => "Đã xác minh tài khoản",
+                BrowserAuthState.BrowserSessionObserved => "Đã quan sát phiên; chưa xác minh tài khoản",
+                BrowserAuthState.GuestLandingLoginAvailable or BrowserAuthState.EmailRequired
+                    or BrowserAuthState.PasswordRequired or BrowserAuthState.MfaRequired
+                    or BrowserAuthState.ExternalProviderRequired or BrowserAuthState.HumanActionRequired
+                    or BrowserAuthState.WaitingForUser => "Cần hoàn tất đăng nhập trong Chrome",
+                BrowserAuthState.ProfileInUse => "Profile đang được sử dụng",
+                BrowserAuthState.Failed => "Không thể mở phiên",
+                _ => FormatAutomationStage(result.State.ToString(), result.State)
+            };
+            _automationStatusMessage = result.Message;
+            _automationTechnicalDetail = IsAuthenticatedProviderSession(result)
+                ? "Đang đối chiếu email tài khoản rồi tự đọc gói và hạn mức."
+                : "Nếu ChatGPT yêu cầu đăng nhập hoặc xác minh, hãy hoàn tất trực tiếp trong Chrome. Ứng dụng không gửi lại mật khẩu hay mã xác minh.";
+            _isAutomationRunning = false;
+            _isAutomationSuccess = IsConfirmedBrowserSession(result);
+            _selectedBrowserRuntime = await BrowserSessionManager.GetStatusAsync(accountId, _automationCts.Token);
+            await RefreshDataAsync();
+            if (IsAuthenticatedProviderSession(result))
+            {
+                await CheckPlanAndQuotaAfterLoginAsync(accountId);
             }
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
+        {
+            _automationStage = "Đã hủy";
+            _automationStatusMessage = "Đã hủy thao tác mở phiên ChatGPT.";
+            _automationTechnicalDetail = "Đã hủy thao tác mở trình duyệt.";
+            _isAutomationRunning = false;
+            _isAutomationSuccess = false;
+        }
+        catch
         {
             _automationStage = "Lỗi ngoại lệ";
-            _automationStatusMessage = "Đã xảy ra lỗi khi khởi chạy Microsoft.Playwright Chromium.";
-            _automationTechnicalDetail = ex.Message;
+            _automationStatusMessage = "Không thể mở phiên ChatGPT được quản lý cho account này.";
+            _automationTechnicalDetail = "Không thể mở trình duyệt. Hãy thử lại.";
             _isAutomationRunning = false;
             _isAutomationSuccess = false;
         }
 
         StateHasChanged();
     }
+
+    private async Task StartAccountObservationAsync(AccountDetailVm account, bool readUsageApi)
+    {
+        if (!IsChatGptLiveAccount(account))
+        {
+            _usageRefreshMessage = "Tính năng này hiện chỉ dùng cho tài khoản ChatGPT.";
+            return;
+        }
+
+        _usageRefreshMessage = null;
+        try
+        {
+            var sessionCheck = await BrowserSessionManager.CheckSessionAsync(account.AccountId);
+            _selectedBrowserRuntime = sessionCheck.Snapshot;
+        }
+        catch
+        {
+            _selectedBrowserRuntime = await BrowserSessionManager.GetStatusAsync(account.AccountId);
+        }
+
+        var activeAttemptId = _selectedBrowserRuntime.ActiveAttemptId;
+        var allowPendingObservation = _selectedBrowserRuntime.AuthenticationState == AuthenticationObservationStatus.PostLoginPending
+            && activeAttemptId is not null;
+        if (_selectedBrowserRuntime.AuthenticationState != AuthenticationObservationStatus.AuthenticatedSessionConfirmed
+            && !allowPendingObservation)
+        {
+            _usageRefreshMessage = "Chưa xác nhận phiên trong profile Chrome riêng của tài khoản. Mở hoặc tiếp tục đăng nhập ở cửa sổ FLASH ROUTER đã mở rồi cập nhật lại; Chrome thường không dùng chung phiên.";
+            return;
+        }
+
+        var providerId = ResolveLiveProviderId(account);
+        var authorization = readUsageApi
+            ? LiveProviderAuthorization.ReadOnlyExistingSessionUsageApi(
+                account.AccountId,
+                providerId,
+                persistNonSecretObservations: true,
+                DateTimeOffset.UtcNow,
+                TimeSpan.FromMinutes(2),
+                "user-requested-chatgpt-plan-and-usage",
+                activeAttemptId,
+                allowPendingObservation)
+            : LiveProviderAuthorization.ReadOnlyExistingSession(
+                account.AccountId,
+                providerId,
+                persistNonSecretObservations: false,
+                DateTimeOffset.UtcNow,
+                TimeSpan.FromMinutes(2),
+                "user-requested-chatgpt-account-details",
+                activeAttemptId,
+                allowPendingObservation);
+        var mode = readUsageApi
+            ? LiveProviderCertificationMode.ExistingAuthenticatedSessionUsageApi
+            : LiveProviderCertificationMode.ExistingAuthenticatedSessionOnly;
+
+        await ExecuteAccountObservationAsync(account, authorization, mode);
+    }
+
+    private static bool IsChatGptLiveAccount(AccountDetailVm account)
+        => account.Provider.Contains("chatgpt", StringComparison.OrdinalIgnoreCase)
+            || account.Provider.Equals("openai", StringComparison.OrdinalIgnoreCase)
+            || account.Provider.Equals("openai-chatgpt", StringComparison.OrdinalIgnoreCase);
+
+    private static string ResolveLiveProviderId(AccountDetailVm account)
+        => IsChatGptLiveAccount(account) ? "openai-chatgpt" : account.Provider;
+
+    private async Task ExecuteAccountObservationAsync(
+        AccountDetailVm account,
+        LiveProviderAuthorization authorization,
+        LiveProviderCertificationMode mode)
+    {
+        _automationCts?.Cancel();
+        _automationCts?.Dispose();
+        _automationCts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        _automationDialogTitle = authorization.UseProviderApi ? "Cập nhật gói và hạn mức" : "Kiểm tra thông tin ChatGPT";
+        _automationStage = "Đang kiểm tra";
+        _automationStatusMessage = authorization.UseProviderApi
+            ? "Đang xác minh phiên và đọc hạn mức từ ChatGPT..."
+            : "Đang đọc thông tin tài khoản từ ChatGPT...";
+        _automationTechnicalDetail = null;
+        _isAutomationRunning = true;
+        _isAutomationSuccess = false;
+        _isAutomationDialogOpen = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await LiveProviderCertification.CertifyAsync(
+                new LiveProviderCertificationRequest(
+                    account.AccountId,
+                    authorization.ProviderId,
+                    authorization,
+                    Mode: mode,
+                    ObservationTimeout: TimeSpan.FromSeconds(45)),
+                _automationCts.Token);
+            _automationStage = result.IsSuccess ? "Hoàn tất" : "Chưa hoàn tất";
+            _automationStatusMessage = FormatObservationMessage(result.Code, result.IsSuccess);
+            _automationTechnicalDetail = null;
+            _usageRefreshMessage = authorization.UseProviderApi ? _automationStatusMessage : _usageRefreshMessage;
+            _selectedBrowserRuntime = result.Snapshot;
+            _isAutomationSuccess = result.IsSuccess;
+            await LoadAccountDetailAsync(account.AccountId);
+            if (result.Observation is not null)
+            {
+                _selectedAccountObservation = result.Observation;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _automationStage = "Đã hủy";
+            _automationStatusMessage = "Đã dừng việc kiểm tra.";
+            _automationTechnicalDetail = null;
+            _isAutomationSuccess = false;
+        }
+        catch
+        {
+            _automationStage = "Chưa hoàn tất";
+            _automationStatusMessage = "Chưa đọc được thông tin từ phiên ChatGPT. Phiên đăng nhập vẫn được giữ; hãy xem nhật ký của tài khoản để biết nguyên nhân.";
+            _automationTechnicalDetail = null;
+            _isAutomationSuccess = false;
+        }
+        finally
+        {
+            _isAutomationRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string FormatObservationMessage(string code, bool isSuccess)
+        => code switch
+        {
+            "CHATGPT_USAGE_API_OBSERVED" => "Đã cập nhật gói và hạn mức từ ChatGPT.",
+            "ACCOUNT_DATA_OBSERVED" => "Đã cập nhật thông tin tài khoản từ ChatGPT.",
+            "IDENTITY_EMAIL_MISMATCH" => "Tài khoản đang mở không khớp tài khoản được chọn. Dữ liệu chưa được sử dụng.",
+            "IDENTITY_EMAIL_UNAVAILABLE" or "IDENTITY_EVIDENCE_INSUFFICIENT" => "Chưa xác minh được tài khoản đang mở. Hoàn tất đăng nhập rồi thử lại.",
+            "IDENTITY_UNCONFIRMED" or "IDENTITY_EMAIL_NOT_EXPOSED" => "Phiên đang đăng nhập, nhưng chưa đọc được email để đối chiếu tài khoản. Phiên hiện tại vẫn được giữ.",
+            "ACCOUNT_OBSERVATION_FAILED" => "Phiên đăng nhập vẫn được giữ, nhưng chưa đọc được thông tin tài khoản. Xem nhật ký tài khoản để biết nguyên nhân.",
+            "ACCOUNT_SETTINGS_UNAVAILABLE" => "Đã đăng nhập nhưng chưa thể mở mục Tài khoản trong ChatGPT. Mở mục Tài khoản trong cùng cửa sổ rồi thử lại.",
+            "USAGE_API_UNAUTHORIZED" or "SESSION_NOT_CONFIRMED" => "Profile Chrome riêng của tài khoản chưa có phiên đăng nhập hợp lệ. Mở hoặc tiếp tục đăng nhập trong cửa sổ FLASH ROUTER đã mở rồi cập nhật lại; Chrome thường không dùng chung phiên.",
+            "USAGE_API_FORBIDDEN" => "ChatGPT hiện chưa cho phép đọc hạn mức của phiên này.",
+            "USAGE_API_RATE_LIMITED" => "ChatGPT đang giới hạn yêu cầu. Hãy thử lại sau.",
+            "USAGE_API_SCHEMA_UNSUPPORTED" => "ChatGPT chưa trả về định dạng hạn mức được hỗ trợ. Không có số liệu ước tính được hiển thị.",
+            "BROWSER_NOT_OPEN" => "Mở phiên ChatGPT và đăng nhập trước khi cập nhật.",
+            "BROWSER_PROFILE_BINDING_MISSING" or "PROVIDER_SCOPE_MISMATCH" or "ATTEMPT_SCOPE_MISMATCH" => "Phiên trình duyệt không khớp tài khoản đang chọn. Hãy đăng nhập lại bằng tài khoản này.",
+            "CERTIFICATION_TIMEOUT" => "ChatGPT mất quá nhiều thời gian để tải thông tin tài khoản. Giữ cửa sổ đăng nhập mở rồi thử lại.",
+            _ when isSuccess => "Đã cập nhật thông tin ChatGPT.",
+            _ => "Chưa lấy được dữ liệu thật từ ChatGPT. Hoàn tất đăng nhập rồi thử lại."
+        };
 
     private Task HandleCloseBrowserFromDetail(AccountDetailVm account)
         => ExecuteBrowserOperationAsync(account.AccountId, "Đóng trình duyệt", BrowserSessionManager.CloseAsync);
@@ -1093,7 +1372,7 @@
         _automationDialogTitle = operation;
         _automationStage = "Đang xử lý";
         _automationStatusMessage = operation + " cho account đang chọn...";
-        _automationTechnicalDetail = "Account-scoped browser lifecycle";
+        _automationTechnicalDetail = "Thao tác chỉ áp dụng cho tài khoản đang chọn.";
         _isAutomationRunning = true;
         _isAutomationSuccess = false;
         _isAutomationDialogOpen = true;
@@ -1103,7 +1382,9 @@
             var result = await action(accountId, CancellationToken.None);
             _automationStage = result.IsSuccess ? "Hoàn tất" : "Chưa hoàn tất";
             _automationStatusMessage = result.Message;
-            _automationTechnicalDetail = result.Status;
+            _automationTechnicalDetail = result.IsSuccess
+                ? "Thao tác đã hoàn tất cho tài khoản đang chọn."
+                : "Thao tác chưa hoàn tất. Hãy kiểm tra phiên Chrome của tài khoản.";
             _isAutomationSuccess = result.IsSuccess;
             _selectedBrowserRuntime = result.Snapshot;
             await RefreshDataAsync();
@@ -1112,7 +1393,7 @@
         {
             _automationStage = "Lỗi thao tác";
             _automationStatusMessage = "Không thể hoàn tất thao tác browser của account này.";
-            _automationTechnicalDetail = "BROWSER_OPERATION_FAILED";
+            _automationTechnicalDetail = "Không thể hoàn tất thao tác. Hãy kiểm tra phiên Chrome của tài khoản.";
         }
         finally
         {
@@ -1141,7 +1422,7 @@
         _automationDialogTitle = "Đăng nhập lại bằng profile mới";
         _automationStage = "Đang chuẩn bị trình duyệt";
         _automationStatusMessage = $"Đang đóng phiên browser cũ và chuẩn bị profile Chromium mới cho {email}...";
-        _automationTechnicalDetail = "Credential sẽ được đọc từ Vault; profile cũ không bị xóa.";
+        _automationTechnicalDetail = "Thông tin đăng nhập được lấy từ kho bảo mật; hồ sơ trình duyệt trước vẫn được giữ lại.";
         _isAutomationRunning = true;
         _isAutomationSuccess = false;
         _isAutomationDialogOpen = true;
@@ -1167,7 +1448,9 @@
                 if (p.IsTerminal)
                 {
                     _isAutomationRunning = false;
-                    _isAutomationSuccess = p.State == BrowserAuthState.BrowserSessionObserved;
+                    // A page-state observation is not enough to mark identity verified.
+                    // The final result carries the independent account identity evidence.
+                    _isAutomationSuccess = false;
                 }
 
                 _ = InvokeAsync(StateHasChanged);
@@ -1178,36 +1461,70 @@
                 progress: progress,
                 cancellationToken: _automationCts.Token);
 
-            if (result.IsSuccess)
+            if (IsAuthenticatedProviderSession(result))
             {
-                _automationStage = "Thành công";
+                var identityVerified = IsConfirmedBrowserSession(result);
+                _automationStage = identityVerified ? "Đã xác minh tài khoản" : "Đang kiểm tra tài khoản";
                 _automationStatusMessage = result.Message;
                 _automationTechnicalDetail = result.CandidateProfile is null
-                    ? $"Trạng thái xác thực: {result.State}"
-                    : "Profile mới được giữ theo chính sách candidate; profile cũ vẫn còn nguyên.";
+                    ? "Đang đọc thông tin gói và hạn mức từ phiên vừa đăng nhập."
+                    : "Đang đối chiếu tài khoản trong phiên mới trước khi lưu dữ liệu.";
                 _isAutomationRunning = false;
-                _isAutomationSuccess = true;
+                _isAutomationSuccess = identityVerified;
+                await RefreshDataAsync();
+                await CheckPlanAndQuotaAfterLoginAsync(accountId);
+            }
+            else if (result.State == BrowserAuthState.PostLoginPending)
+            {
+                _automationStage = "Đang chờ provider";
+                _automationStatusMessage = result.Message;
+                _automationTechnicalDetail = "ChatGPT đang chờ xác minh trong Chrome. Ứng dụng không gửi lại mã xác minh.";
+                _isAutomationRunning = false;
+                _isAutomationSuccess = false;
                 await RefreshDataAsync();
             }
             else
             {
                 _automationStage = FormatAutomationStage(result.State.ToString(), result.State);
                 _automationStatusMessage = result.Message;
-                _automationTechnicalDetail = $"Mã an toàn: {result.Status}; profile cũ được giữ nguyên.";
+                _selectedBrowserRuntime = await BrowserSessionManager.GetStatusAsync(accountId, _automationCts.Token);
+                var retainedAttempt = result.AttemptId is Guid attemptId
+                    && _selectedBrowserRuntime.ActiveAttemptId == attemptId
+                    && _selectedBrowserRuntime.RuntimeState == AccountBrowserRuntimeState.Open;
+                _automationTechnicalDetail = retainedAttempt
+                    ? "Cửa sổ Chrome của profile mới vẫn được giữ. Hoàn tất bước đang hiển thị trong cửa sổ đó, rồi bấm “Tiếp tục đăng nhập” để kiểm tra lại; không gửi lại mật khẩu hay mã xác minh."
+                    : result.Status == "INVALID_CREDENTIALS_BROWSER_CLOSED"
+                        ? "Chrome đã đóng sau hơn năm lần nhập sai. Kiểm tra lại thông tin tài khoản trước khi bắt đầu luồng đăng nhập mới."
+                        : "Phiên đăng nhập không còn mở. Nếu ChatGPT đang giới hạn yêu cầu, chờ hết giới hạn rồi bắt đầu lại; ứng dụng không tự gửi lại thông tin đăng nhập. ";
                 _isAutomationRunning = false;
                 _isAutomationSuccess = false;
+                await RefreshDataAsync();
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _automationStage = "Lỗi quy trình";
             _automationStatusMessage = "Quy trình đăng nhập tự động gặp sự cố.";
-            _automationTechnicalDetail = ex.Message;
+            _automationTechnicalDetail = "Đã xảy ra lỗi trong khi đăng nhập. Hãy kiểm tra thông báo trạng thái rồi thử lại.";
             _isAutomationRunning = false;
             _isAutomationSuccess = false;
         }
 
         StateHasChanged();
+    }
+
+    private async Task CheckPlanAndQuotaAfterLoginAsync(Guid accountId)
+    {
+        if (_selectedAccountId != accountId)
+        {
+            return;
+        }
+
+        await LoadAccountDetailAsync(accountId);
+        if (_selectedAccountDetail is { } account && account.AccountId == accountId)
+        {
+            await StartAccountObservationAsync(account, readUsageApi: true);
+        }
     }
 
     private void CancelAutomation()
@@ -1217,6 +1534,16 @@
         _automationStage = "Đang hủy";
         StateHasChanged();
     }
+
+    private static bool IsConfirmedBrowserSession(BrowserAuthResult result)
+        => result.IsSuccess
+            && result.State == BrowserAuthState.BrowserSessionObserved
+            && result.ObservationResult?.Status == AuthenticationObservationStatus.AuthenticatedSessionConfirmed
+            && result.ObservationResult.IdentityStatus == IdentityVerificationStatus.IdentityVerified;
+
+    private static bool IsAuthenticatedProviderSession(BrowserAuthResult result)
+        => result.State == BrowserAuthState.BrowserSessionObserved
+            && result.ObservationResult?.Status == AuthenticationObservationStatus.AuthenticatedSessionConfirmed;
 
     private static string FormatAutomationStage(string stage, BrowserAuthState state)
         => stage switch
@@ -1228,11 +1555,12 @@
             "FillingPassword" => "Đang xác thực mật khẩu",
             "FillingTotp" or "SubmittingTotp" => "Đang gửi mã xác thực hai bước",
             "ObservingPostLogin" or "CheckingAuthenticatedSession" => "Đang kiểm tra kết quả đăng nhập",
+            "PostLoginPending" => "Đang chờ provider hoàn tất phiên",
             "ConfirmingBrowserSession" => "Đã xác nhận phiên đăng nhập",
             "WaitingForUser" => "Cần xác minh thêm",
             "TimedOut" => "Không thể xác minh trong thời gian cho phép",
             "Cancelled" => "Đã hủy",
-            _ when state == BrowserAuthState.BrowserSessionObserved => "Đã hoàn tất",
+            _ when state == BrowserAuthState.BrowserSessionObserved => "Đã quan sát phiên; chưa xác minh tài khoản",
             _ when state == BrowserAuthState.TimedOut => "Không thể xác minh trong thời gian cho phép",
             _ when state == BrowserAuthState.Cancelled => "Đã hủy",
             _ => stage

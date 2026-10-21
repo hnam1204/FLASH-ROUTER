@@ -10,7 +10,7 @@ namespace FlashAI.Modules.Connections.Application;
 /// Process handles never leave memory and are always addressed by the profile path
 /// that was prepared for the requested account.
 /// </summary>
-public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager, IAccountBrowserSessionRegistration, IDisposable
+public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager, IAccountBrowserSessionRegistration, IAccountDataObservationPort, IAuthorizedAccountDataObservationPort, IDisposable
 {
     private const string ProviderId = "openai-chatgpt";
     private readonly IBrowserProfileManager _profiles;
@@ -18,6 +18,7 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
     private readonly IChromeProcessController? _controller;
     private readonly IServiceScopeFactory? _scopeFactory;
     private readonly IBrowserPageStateDetector _stateDetector;
+    private readonly IProviderAccountObservationStore? _accountObservationStore;
     private readonly ConcurrentDictionary<Guid, RuntimeEntry> _entries = new();
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _gates = new();
 
@@ -25,13 +26,15 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         IBrowserProfileManager profiles,
         IChromeProcessLauncher launcher,
         IServiceScopeFactory? scopeFactory = null,
-        IBrowserPageStateDetector? stateDetector = null)
+        IBrowserPageStateDetector? stateDetector = null,
+        IProviderAccountObservationStore? accountObservationStore = null)
     {
         _profiles = profiles;
         _launcher = launcher;
         _controller = launcher as IChromeProcessController;
         _scopeFactory = scopeFactory;
         _stateDetector = stateDetector ?? new StableBrowserPageStateDetector();
+        _accountObservationStore = accountObservationStore;
     }
 
     public async Task<BrowserRuntimeSnapshot> GetStatusAsync(
@@ -46,6 +49,7 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         {
             entry.RuntimeState = AccountBrowserRuntimeState.Crashed;
             entry.LastClosedAtUtc = DateTimeOffset.UtcNow;
+            entry.CloseReason = BrowserCloseReason.BrowserProcessExited;
             await AuditAsync(accountId, "BrowserCrashed", "Chrome thuộc profile tài khoản đã dừng ngoài thao tác đóng.", "Warning", "BROWSER_EXITED");
         }
 
@@ -154,6 +158,7 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
 
                 entry.RuntimeState = AccountBrowserRuntimeState.Closed;
                 entry.LastClosedAtUtc = DateTimeOffset.UtcNow;
+                entry.CloseReason = BrowserCloseReason.UserRequested;
                 await AuditAsync(accountId, "BrowserClosed", "Managed Playwright context của tài khoản đã đóng.", "Success");
                 await AuditAsync(accountId, "ProfileLeaseReleased", "Ownership của profile tài khoản đã được giải phóng.", "Info");
                 var managedClosed = await SnapshotForAsync(accountId, AccountBrowserRuntimeState.Closed, "Managed Playwright context", cancellationToken);
@@ -189,6 +194,7 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
 
             entry.RuntimeState = AccountBrowserRuntimeState.Closed;
             entry.LastClosedAtUtc = DateTimeOffset.UtcNow;
+            entry.CloseReason = BrowserCloseReason.UserRequested;
             await AuditAsync(accountId, "BrowserClosed", "Chrome của tài khoản đã đóng.", "Success");
             await AuditAsync(accountId, "ProfileLeaseReleased", "Ownership của profile tài khoản đã được giải phóng.", "Info");
             var closedSnapshot = await SnapshotForAsync(accountId, AccountBrowserRuntimeState.Closed, "Account-scoped close", cancellationToken);
@@ -218,6 +224,22 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         Guid accountId,
         CancellationToken cancellationToken = default)
     {
+        var gate = _gates.GetOrAdd(accountId, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            return await CheckSessionCoreAsync(accountId, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task<SessionObservationResult> CheckSessionCoreAsync(
+        Guid accountId,
+        CancellationToken cancellationToken)
+    {
         var status = await GetStatusAsync(accountId, cancellationToken);
         if (status.RuntimeState != AccountBrowserRuntimeState.Open)
         {
@@ -232,13 +254,20 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
             {
                 var page = await entry.Session.ReadPageAsync(cancellationToken);
                 var state = _stateDetector.Detect(page);
+                var historical = await ReadAuthenticationAsync(accountId, cancellationToken);
+                var sameAttemptIdentity = entry.AttemptId is Guid activeAttemptId
+                    && historical?.AttemptId == activeAttemptId
+                    && Enum.TryParse<IdentityVerificationStatus>(historical.IdentityVerificationState, out var historicalIdentity)
+                    && historicalIdentity == IdentityVerificationStatus.IdentityVerified
+                        ? IdentityVerificationStatus.IdentityVerified
+                        : IdentityVerificationStatus.Unverified;
                 var observation = state == BrowserPageState.Authenticated
                     ? new AuthenticationObservationResult(
                         accountId,
                         entry.AttemptId ?? Guid.NewGuid(),
                         entry.Context.ProviderId,
                         AuthenticationObservationStatus.AuthenticatedSessionConfirmed,
-                        IdentityVerificationStatus.Unverified,
+                        sameAttemptIdentity,
                         DateTimeOffset.UtcNow,
                         "Official provider page-state observation",
                         null)
@@ -251,14 +280,14 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
                 var fresh = status with
                 {
                     AuthenticationState = authState,
-                    IdentityVerificationState = IdentityVerificationStatus.Unverified,
+                    IdentityVerificationState = sameAttemptIdentity,
                     LastSessionObservedAtUtc = observation?.ObservedAtUtc,
                     LastAuthenticatedSessionConfirmedAtUtc = observation?.ObservedAtUtc,
                     EvidenceSource = "Official provider page-state observation"
                 };
                 if (observation is not null)
                 {
-                    await PersistAuthenticationAsync(observation);
+                    await PersistAuthenticationAsync(observation, attemptedAtUtc: entry.StartedAtUtc);
                     await AuditAsync(accountId, "BrowserSessionObserved", "Đã quan sát UI chính thức của provider trong context thuộc tài khoản.", "Success");
                     await AuditAsync(accountId, "AuthenticatedSessionConfirmed", "Đã xác nhận trạng thái authenticated của provider; identity vẫn độc lập.", "Success");
                 }
@@ -292,6 +321,358 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         return result;
     }
 
+    public async Task<AccountObservationResult> ObserveAccountDataAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default)
+        => await ObserveAccountDataAsync(
+            accountId,
+            AccountObservationPersistenceMode.PersistNonSecretObservations,
+            cancellationToken);
+
+    public async Task<AccountObservationResult> ObserveAccountDataAsync(
+        Guid accountId,
+        AccountObservationPersistenceMode persistenceMode,
+        CancellationToken cancellationToken = default,
+        bool readChatGptUsageApi = false)
+    {
+        var persistObservation = persistenceMode == AccountObservationPersistenceMode.PersistNonSecretObservations;
+        var persistUsageSnapshotOnly = readChatGptUsageApi
+            && persistenceMode == AccountObservationPersistenceMode.PersistChatGptUsageSnapshotOnly;
+        var localObservationPersisted = false;
+        var gate = _gates.GetOrAdd(accountId, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var status = await GetStatusAsync(accountId, cancellationToken);
+            if (status.RuntimeState != AccountBrowserRuntimeState.Open)
+            {
+                return new AccountObservationResult(
+                    false,
+                    "BROWSER_NOT_OPEN",
+                    "Chưa có phiên trình duyệt đang mở để kiểm tra dữ liệu tài khoản. Hãy mở phiên đã được quản lý hoặc yêu cầu đăng nhập lại; hệ thống không tự gửi credential/TOTP.",
+                    status with { SanitizedFailureCode = "BROWSER_NOT_OPEN" });
+            }
+
+            if (!_entries.TryGetValue(accountId, out var entry)
+                || entry.Session is not IBrowserAccountObservationSession observationSession)
+            {
+                return new AccountObservationResult(
+                    false,
+                    "ACCOUNT_SETTINGS_UNAVAILABLE",
+                    "Không có context Playwright được sở hữu để đọc account/settings UI; cửa sổ Chrome ngoài không được đọc qua private state.",
+                    status with { SanitizedFailureCode = "ACCOUNT_SETTINGS_UNAVAILABLE" });
+            }
+
+            var intendedEmail = await ReadAccountEmailAsync(accountId, cancellationToken);
+            if (string.IsNullOrWhiteSpace(intendedEmail))
+            {
+                return new AccountObservationResult(
+                    false,
+                    "ACCOUNT_NOT_FOUND",
+                    "Không thể xác định email đã lưu của account để so sánh identity.",
+                    status with { SanitizedFailureCode = "ACCOUNT_NOT_FOUND" });
+            }
+
+            var attemptId = entry.AttemptId ?? Guid.NewGuid();
+            await AuditAsync(accountId, "AccountObservationStarted", "Đã bắt đầu kiểm tra dữ liệu account từ UI provider chính thức.", "Info");
+            ProviderAccountObservation observation;
+            try
+            {
+                observation = await observationSession.ReadAccountObservationAsync(
+                    accountId,
+                    attemptId,
+                    entry.Context.BindingId,
+                    cancellationToken);
+            }
+            catch (BrowserAuthSessionException exception)
+            {
+                if (exception.SafeCode == "BROWSER_CLOSED")
+                {
+                    entry.RuntimeState = AccountBrowserRuntimeState.Disconnected;
+                }
+
+                var failedSnapshot = await SnapshotForAsync(accountId, entry.RuntimeState, exception.SafeCode, cancellationToken);
+                await AuditAsync(accountId, "AccountObservationFailed", exception.SafeMessage, "Warning", exception.SafeCode);
+                return new AccountObservationResult(
+                    false,
+                    exception.SafeCode,
+                    exception.SafeMessage,
+                    failedSnapshot,
+                    IdentityStatus: IdentityVerificationStatus.Unknown);
+            }
+
+            var verifier = new ProviderAccountVerificationService();
+            var identity = verifier.VerifyObservation(
+                new ProviderIdentityVerificationRequest(
+                    accountId,
+                    attemptId,
+                    entry.Context.BindingId,
+                    entry.Context.ProviderId,
+                    intendedEmail,
+                    entry.Session!),
+                observation);
+
+            if (identity.SafeReasonCode == "IDENTITY_OBSERVATION_SCOPE_MISMATCH")
+            {
+                var scopeFailure = await SnapshotForAsync(
+                    accountId,
+                    entry.RuntimeState,
+                    identity.SafeReasonCode,
+                    cancellationToken);
+                await AuditAsync(
+                    accountId,
+                    "AccountObservationFailed",
+                    "Đã chặn observation vì context provider không khớp account/attempt/profile đang sở hữu.",
+                    "Warning",
+                    identity.SafeReasonCode);
+
+                return new AccountObservationResult(
+                    false,
+                    identity.SafeReasonCode,
+                    "Đã chặn dữ liệu provider vì context không khớp account đang kiểm tra; không lưu observation.",
+                    scopeFailure,
+                    IdentityStatus: IdentityVerificationStatus.Unverified);
+            }
+
+            if (readChatGptUsageApi)
+            {
+                observation = await AddAuthorizedUsageObservationAsync(
+                    accountId,
+                    entry,
+                    observation,
+                    identity.Status,
+                    cancellationToken);
+            }
+
+            var usageApiSucceeded = readChatGptUsageApi
+                && identity.Status == IdentityVerificationStatus.IdentityVerified
+                && observation.UsageQuota.Status == ProviderAccountObservationFieldStatus.Observed;
+            if (_accountObservationStore is not null
+                && (persistObservation || persistUsageSnapshotOnly && usageApiSucceeded))
+            {
+                var persistedObservation = persistUsageSnapshotOnly
+                    ? CreateUsageOnlyObservation(observation)
+                    : observation;
+                await _accountObservationStore.SaveAsync(persistedObservation, cancellationToken);
+                localObservationPersisted = true;
+            }
+
+            if (persistObservation || persistUsageSnapshotOnly)
+            {
+                await PersistAuthenticationAsync(
+                    new AuthenticationObservationResult(
+                        accountId,
+                        attemptId,
+                        entry.Context.ProviderId,
+                        observation.AuthenticatedShellDetected
+                            ? AuthenticationObservationStatus.AuthenticatedSessionConfirmed
+                            : AuthenticationObservationStatus.Unknown,
+                        identity.Status,
+                        observation.ObservedAtUtc,
+                        observation.EvidenceSurface,
+                        identity.SafeReasonCode,
+                        identity.ObservedProviderEmail,
+                        observation.EvidenceSurface,
+                        identity.SafeReasonCode),
+                    identity,
+                    entry.StartedAtUtc);
+            }
+
+            var fresh = await SnapshotForAsync(accountId, entry.RuntimeState, observation.EvidenceSurface, cancellationToken);
+            var resultStatus = usageApiSucceeded
+                ? "CHATGPT_USAGE_API_OBSERVED"
+                : readChatGptUsageApi && identity.Status == IdentityVerificationStatus.IdentityVerified
+                    ? observation.UsageQuota.FailureReasonCode ?? "CHATGPT_USAGE_API_FAILED"
+                    : ResolveObservationStatus(observation, identity);
+            var resultMessage = resultStatus switch
+            {
+                "ACCOUNT_DATA_OBSERVED" => "Đã đọc dữ liệu account hiển thị trong UI provider; không thay đổi cài đặt nào.",
+                "CHATGPT_USAGE_API_OBSERVED" => "Đã đọc plan/usage thật từ endpoint ChatGPT trong session account đã xác minh.",
+                "IDENTITY_EMAIL_MISMATCH" => "Email provider khác email đã lưu; dữ liệu gốc và profile chính được giữ nguyên.",
+                "IDENTITY_EMAIL_UNAVAILABLE" => "Đã quan sát phiên provider nhưng chưa có email đủ tin cậy để đối chiếu; không xác nhận danh tính.",
+                "IDENTITY_EVIDENCE_INSUFFICIENT" => "Đã quan sát phiên provider nhưng bằng chứng identity chưa đủ mạnh để xác nhận.",
+                "USAGE_API_UNAUTHORIZED" => "Session ChatGPT chưa đăng nhập hoặc đã hết hạn; chưa lấy được usage thật.",
+                "USAGE_API_FORBIDDEN" => "ChatGPT từ chối quyền đọc usage cho session hiện tại.",
+                "USAGE_API_RATE_LIMITED" => "ChatGPT giới hạn yêu cầu usage; hãy thử lại sau.",
+                "USAGE_API_SCHEMA_UNSUPPORTED" => "Endpoint đã phản hồi nhưng chưa có field usage được hỗ trợ; không tạo số liệu suy đoán.",
+                _ => "Đã lưu observation một phần; provider chưa hiển thị đủ dữ liệu được hỗ trợ."
+            };
+            var isSuccessfulObservation = resultStatus is "ACCOUNT_DATA_OBSERVED" or "CHATGPT_USAGE_API_OBSERVED"
+                && identity.Status == IdentityVerificationStatus.IdentityVerified;
+            await AuditAsync(
+                accountId,
+                isSuccessfulObservation ? "AccountObservationCompleted" : "AccountObservationPartial",
+                resultMessage,
+                isSuccessfulObservation ? "Success" : "Warning",
+                resultStatus);
+            return new AccountObservationResult(
+                isSuccessfulObservation,
+                resultStatus,
+                resultMessage,
+                fresh,
+                ToSnapshot(observation),
+                identity.Status,
+                localObservationPersisted);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task<ProviderAccountObservation> AddAuthorizedUsageObservationAsync(
+        Guid accountId,
+        RuntimeEntry entry,
+        ProviderAccountObservation observation,
+        IdentityVerificationStatus identityStatus,
+        CancellationToken cancellationToken)
+    {
+        const string source = "GET https://chatgpt.com/backend-api/wham/usage";
+        ChatGptUsageApiReadResult result;
+        if (identityStatus != IdentityVerificationStatus.IdentityVerified)
+        {
+            result = new ChatGptUsageApiReadResult(
+                false,
+                "USAGE_IDENTITY_NOT_VERIFIED",
+                "Đã bỏ qua endpoint usage vì email provider chưa được xác minh cho account này.");
+        }
+        else if (entry.Session is not IChatGptUsageApiObservationSession usageSession)
+        {
+            result = new ChatGptUsageApiReadResult(
+                false,
+                "USAGE_API_CONTEXT_UNAVAILABLE",
+                "Session browser hiện tại không có context được hỗ trợ để đọc usage an toàn.");
+        }
+        else
+        {
+            if (entry.RuntimeState != AccountBrowserRuntimeState.Open
+                || entry.Context.ProviderId != ProviderId
+                || entry.Context.AccountId != accountId)
+            {
+                result = new ChatGptUsageApiReadResult(
+                    false,
+                    "USAGE_API_CONTEXT_SCOPE_MISMATCH",
+                    "Đã chặn usage request vì account/provider không khớp browser context hiện tại.");
+            }
+            else
+            {
+                try
+                {
+                    result = await usageSession.ReadUsageApiAsync(cancellationToken);
+                }
+                catch (BrowserAuthSessionException exception)
+                {
+                    if (exception.SafeCode == "BROWSER_CLOSED")
+                    {
+                        entry.RuntimeState = AccountBrowserRuntimeState.Disconnected;
+                    }
+
+                    result = new ChatGptUsageApiReadResult(false, exception.SafeCode, exception.SafeMessage);
+                }
+            }
+        }
+
+        var observedAt = result.Snapshot?.ObservedAtUtc ?? DateTimeOffset.UtcNow;
+        if (result.IsSuccess && result.Snapshot is not null)
+        {
+            var value = ChatGptWebUsageSnapshotCodec.Serialize(result.Snapshot);
+            var usage = new ProviderAccountFieldEvidence(
+                ProviderAccountObservationField.UsageQuota,
+                value,
+                source,
+                "ChatGptWebUsageV1",
+                "Read-only response from the account-bound authenticated ChatGPT browser context.",
+                ProviderAccountObservationFieldStatus.Observed,
+                observedAt);
+            var plan = observation.Plan;
+            if (result.Snapshot.PlanType is not null && plan.Status != ProviderAccountObservationFieldStatus.Observed)
+            {
+                plan = new ProviderAccountFieldEvidence(
+                    ProviderAccountObservationField.Plan,
+                    result.Snapshot.PlanType,
+                    source,
+                    "ChatGptWebPlanTypeV1",
+                    "Plan type returned by the authenticated ChatGPT usage endpoint.",
+                    ProviderAccountObservationFieldStatus.Observed,
+                    observedAt);
+            }
+
+            await AuditAsync(accountId, "ChatGptUsageApiObserved", "Đã đọc usage qua GET read-only trong session account đã xác minh.", "Success");
+            return observation with { Plan = plan, UsageQuota = usage, ObservationStatus = "Observed" };
+        }
+
+        var failedUsage = new ProviderAccountFieldEvidence(
+            ProviderAccountObservationField.UsageQuota,
+            null,
+            source,
+            "ChatGptWebUsageV1",
+            result.Message,
+            ProviderAccountObservationFieldStatus.Failed,
+            observedAt,
+            result.Status);
+        await AuditAsync(accountId, "ChatGptUsageApiFailed", "Không thể đọc usage từ session ChatGPT hiện tại.", "Warning", result.Status);
+        return observation with { UsageQuota = failedUsage, ObservationStatus = "PartiallyResolved" };
+    }
+
+    private static ProviderAccountObservation CreateUsageOnlyObservation(ProviderAccountObservation observation)
+    {
+        var observedAt = observation.UsageQuota.ObservedAtUtc;
+        ProviderAccountFieldEvidence Hidden(ProviderAccountObservationField field)
+            => new(
+                field,
+                null,
+                "Không lưu trường này",
+                "UsageSnapshotOnly",
+                "Không thuộc dữ liệu quota đã chọn",
+                ProviderAccountObservationFieldStatus.Unavailable,
+                observedAt);
+        var identityBinding = new ProviderAccountFieldEvidence(
+            ProviderAccountObservationField.Email,
+            null,
+            "Phiên ChatGPT đã đối chiếu với account đang chọn",
+            "VerifiedChatGptUsageBindingV1",
+            "Đã khớp account",
+            ProviderAccountObservationFieldStatus.Observed,
+            observedAt);
+
+        return observation with
+        {
+            ObservedAtUtc = observedAt,
+            ObservationStatus = "UsageObserved",
+            EvidenceSurface = "Phiên ChatGPT đã xác minh",
+            FailureReasonCode = null,
+            DisplayName = Hidden(ProviderAccountObservationField.DisplayName),
+            Email = identityBinding,
+            Plan = Hidden(ProviderAccountObservationField.Plan),
+            MfaConfiguration = Hidden(ProviderAccountObservationField.MfaConfiguration)
+        };
+    }
+
+    private static string ResolveObservationStatus(
+        ProviderAccountObservation observation,
+        ProviderIdentityVerificationResult identity)
+    {
+        if (identity.Status == IdentityVerificationStatus.Mismatch)
+        {
+            return "IDENTITY_EMAIL_MISMATCH";
+        }
+
+        if (identity.Status != IdentityVerificationStatus.IdentityVerified)
+        {
+            return identity.SafeReasonCode switch
+            {
+                "IDENTITY_EMAIL_NOT_EXPOSED" or "IDENTITY_EMAIL_UNAVAILABLE" => "IDENTITY_EMAIL_UNAVAILABLE",
+                "IDENTITY_EVIDENCE_INSUFFICIENT" => "IDENTITY_EVIDENCE_INSUFFICIENT",
+                _ => identity.SafeReasonCode ?? "IDENTITY_UNVERIFIED"
+            };
+        }
+
+        return observation.FailureReasonCode
+            ?? (observation.ObservationStatus.Equals("Observed", StringComparison.OrdinalIgnoreCase)
+                ? "ACCOUNT_DATA_OBSERVED"
+                : "ACCOUNT_SETTINGS_UNAVAILABLE");
+    }
+
     public async Task ReconcileAsync(CancellationToken cancellationToken = default)
     {
         foreach (var pair in _entries.ToArray())
@@ -304,12 +685,13 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
 
             pair.Value.RuntimeState = AccountBrowserRuntimeState.Crashed;
             pair.Value.LastClosedAtUtc = DateTimeOffset.UtcNow;
+            pair.Value.CloseReason = BrowserCloseReason.BrowserProcessExited;
             await AuditAsync(pair.Key, "BrowserDisconnected", "Browser process không còn chạy; authentication history vẫn được giữ nguyên.", "Warning", "BROWSER_DISCONNECTED");
             await AuditAsync(pair.Key, "BrowserCrashed", "Browser runtime đã kết thúc ngoài thao tác đóng.", "Warning", "BROWSER_DISCONNECTED");
         }
     }
 
-    public Task RegisterManagedSessionAsync(
+    public async Task RegisterManagedSessionAsync(
         Guid accountId,
         Guid attemptId,
         BrowserProfileSessionContext profile,
@@ -317,8 +699,29 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _entries[accountId] = new RuntimeEntry(profile, AccountBrowserRuntimeState.Open, DateTimeOffset.UtcNow, session, attemptId);
-        return AuditAsync(accountId, "BrowserOpened", "Playwright context của attempt đã được liên kết với lifecycle manager.", "Success");
+
+        var gate = _gates.GetOrAdd(accountId, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_entries.TryGetValue(accountId, out var current)
+                && current.AttemptId is Guid currentAttemptId
+                && currentAttemptId != attemptId
+                && current.RuntimeState is not (AccountBrowserRuntimeState.Closed or AccountBrowserRuntimeState.Crashed))
+            {
+                throw new BrowserAuthSessionException(
+                    "STALE_ATTEMPT_REJECTED",
+                    "Attempt cũ không được phép ghi đè browser session đang thuộc attempt mới hơn.");
+            }
+
+            _entries[accountId] = new RuntimeEntry(profile, AccountBrowserRuntimeState.Open, DateTimeOffset.UtcNow, session, attemptId);
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        await AuditAsync(accountId, "BrowserOpened", "Playwright context của attempt đã được liên kết với lifecycle manager.", "Success");
     }
 
     public async Task UnregisterManagedSessionAsync(
@@ -372,6 +775,10 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         if (entry is not null)
         {
             entry.RuntimeState = state;
+            if (state == AccountBrowserRuntimeState.Crashed)
+            {
+                entry.CloseReason ??= BrowserCloseReason.Unknown;
+            }
         }
 
         return Snapshot(accountId, binding?.BindingId, ProviderId, entry, historical, state, evidence);
@@ -387,7 +794,10 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         string? evidence = null)
         => new(
             accountId,
-            bindingId ?? entry?.Context.BindingId,
+            // The active Playwright context owns the runtime binding. This is
+            // important for one-shot candidates, whose binding is not the
+            // persisted authoritative profile until promotion succeeds.
+            entry?.Context.BindingId ?? bindingId,
             providerId,
             overrideState ?? (entry?.RuntimeState ?? AccountBrowserRuntimeState.Closed),
             Enum.TryParse<AuthenticationObservationStatus>(historical?.AuthenticationState, out var auth) ? auth : AuthenticationObservationStatus.NotChecked,
@@ -398,7 +808,9 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
             historical?.LastBrowserSessionObservedAtUtc,
             historical?.LastAuthenticatedSessionConfirmedAtUtc,
             evidence ?? historical?.EvidenceSource ?? "Current process reconciliation",
-            historical?.SanitizedFailureCode);
+            historical?.SanitizedFailureCode,
+            entry?.AttemptId,
+            entry?.CloseReason);
 
     private async Task<AccountAuthenticationStateSnapshot?> ReadAuthenticationAsync(Guid accountId, CancellationToken cancellationToken)
     {
@@ -411,6 +823,35 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         var reader = scope.ServiceProvider.GetService<IAccountAuthenticationStateReader>();
         return reader is null ? null : await reader.GetAsync(accountId, cancellationToken);
     }
+
+    private async Task<string?> ReadAccountEmailAsync(Guid accountId, CancellationToken cancellationToken)
+    {
+        if (_scopeFactory is null)
+        {
+            return null;
+        }
+
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var reader = scope.ServiceProvider.GetService<BrowserAuthCredentialReader>();
+        return reader is null ? null : await reader.GetAccountEmailAsync(accountId, cancellationToken);
+    }
+
+    private static ProviderAccountObservationSnapshot ToSnapshot(ProviderAccountObservation observation)
+        => new(
+            Guid.NewGuid(),
+            observation.AccountId,
+            observation.AttemptId,
+            observation.BrowserProfileBindingId,
+            observation.ProviderId,
+            observation.BrowserContextId,
+            observation.ObservedAtUtc,
+            observation.Locale,
+            observation.AuthenticatedShellDetected,
+            observation.AccountMenuDetected,
+            observation.ObservationStatus,
+            observation.EvidenceSurface,
+            observation.FailureReasonCode,
+            [observation.DisplayName, observation.Email, observation.Plan, observation.MfaConfiguration, observation.UsageQuota]);
 
     private async Task AuditAsync(Guid accountId, string eventType, string summary, string severity, string? errorCode = null)
     {
@@ -434,7 +875,10 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         }
     }
 
-    private async Task PersistAuthenticationAsync(AuthenticationObservationResult observation)
+    private async Task PersistAuthenticationAsync(
+        AuthenticationObservationResult observation,
+        ProviderIdentityVerificationResult? identity = null,
+        DateTimeOffset? attemptedAtUtc = null)
     {
         if (_scopeFactory is null)
         {
@@ -447,19 +891,23 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
             var store = scope.ServiceProvider.GetService<IAccountAuthenticationStateStore>();
             if (store is not null)
             {
+                var confirmed = observation.Status == AuthenticationObservationStatus.AuthenticatedSessionConfirmed;
                 await store.RecordAsync(new AccountAuthenticationStateUpdate(
                     observation.AccountId,
                     observation.AttemptId,
                     observation.ProviderId,
-                    "AuthenticatedSessionConfirmed",
+                    observation.Status.ToString(),
                     observation.IdentityStatus.ToString(),
-                    observation.ObservedAtUtc,
-                    observation.ObservedAtUtc,
-                    observation.ObservedAtUtc,
+                    attemptedAtUtc ?? observation.ObservedAtUtc,
+                    confirmed ? observation.ObservedAtUtc : null,
+                    confirmed ? observation.ObservedAtUtc : null,
                     null,
                     observation.ObservedAtUtc,
                     observation.EvidenceSource,
-                    observation.SanitizedFailureCode));
+                    observation.SanitizedFailureCode,
+                    observation.ObservedProviderEmail,
+                    identity?.EvidenceSource ?? observation.IdentityEvidenceSource,
+                    identity?.SafeReasonCode ?? observation.IdentityReasonCode));
             }
         }
         catch
@@ -507,6 +955,7 @@ public sealed class AccountBrowserSessionManager : IAccountBrowserSessionManager
         public AccountBrowserRuntimeState RuntimeState { get; set; }
         public DateTimeOffset StartedAtUtc { get; }
         public DateTimeOffset? LastClosedAtUtc { get; set; }
+        public BrowserCloseReason? CloseReason { get; set; }
         public IBrowserAuthenticationSession? Session { get; set; }
         public Guid? AttemptId { get; }
     }

@@ -329,7 +329,8 @@ namespace FLASHROUTER.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("AccountId", "ProviderId", "BrowserKind")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("State <> 'Archived'");
 
                     b.ToTable("BrowserProfileBindings", (string)null);
                 });
@@ -486,6 +487,119 @@ namespace FLASHROUTER.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("OAuthRegistrations", (string)null);
+                });
+
+            modelBuilder.Entity("FlashAI.Modules.Connections.Domain.ProviderAccountObservationFieldRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Confidence")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EvidenceType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FailureReasonCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Field")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ObservationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ObservedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ObservationId", "Field")
+                        .IsUnique();
+
+                    b.ToTable("ProviderAccountObservationFields", (string)null);
+                });
+
+            modelBuilder.Entity("FlashAI.Modules.Connections.Domain.ProviderAccountObservationRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AccountMenuDetected")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("AttemptId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AuthenticatedShellDetected")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BrowserContextId")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("BrowserProfileBindingId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EvidenceSurface")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FailureReasonCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ObservationStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ObservedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "ProviderId", "ObservedAtUtc");
+
+                    b.ToTable("ProviderAccountObservations", (string)null);
                 });
 
             modelBuilder.Entity("FlashAI.Modules.Connections.Domain.ProviderCapabilityDefinitionRecord", b =>
@@ -841,6 +955,24 @@ namespace FLASHROUTER.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("FlashAI.Modules.Connections.Domain.ProviderAccountObservationFieldRecord", b =>
+                {
+                    b.HasOne("FlashAI.Modules.Connections.Domain.ProviderAccountObservationRecord", null)
+                        .WithMany("Fields")
+                        .HasForeignKey("ObservationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FlashAI.Modules.Connections.Domain.ProviderAccountObservationRecord", b =>
+                {
+                    b.HasOne("FlashAI.Modules.Accounts.Domain.AccountRecord", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("FlashAI.Modules.Connections.Domain.ProviderCheckRunRecord", b =>
                 {
                     b.HasOne("FlashAI.Modules.Connections.Domain.ProviderConnectionRecord", null)
@@ -895,6 +1027,11 @@ namespace FLASHROUTER.Persistence.Migrations
             modelBuilder.Entity("FlashAI.Modules.Accounts.Domain.AccountRecord", b =>
                 {
                     b.Navigation("Tags");
+                });
+
+            modelBuilder.Entity("FlashAI.Modules.Connections.Domain.ProviderAccountObservationRecord", b =>
+                {
+                    b.Navigation("Fields");
                 });
 #pragma warning restore 612, 618
         }

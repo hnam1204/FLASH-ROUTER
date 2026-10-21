@@ -259,12 +259,13 @@ public sealed class Be04RMultiConnectionTests : IAsyncLifetime
     }
 
     [Fact]
-    public void ResearchOnlyProvidersAreVisibleAsMetadataButCannotResolveAnAdapter()
+    public void CodexCliQuotaSourceIsVisibleButCannotBeAddedAsAGenericApiConnection()
     {
         var registry = new ProviderRegistry(Array.Empty<IAiProviderAdapter>());
         var descriptor = Assert.Single(registry.Descriptors, item => item.ProviderId == "codex-cli");
 
-        Assert.Equal(ProviderImplementationState.ResearchOnly, descriptor.ImplementationState);
+        Assert.Equal(ProviderImplementationState.Implemented, descriptor.ImplementationState);
+        Assert.Contains(ProviderCapability.Quota, descriptor.SupportedCapabilities);
         Assert.False(descriptor.IsConnectable);
         Assert.False(registry.TryResolve("codex-cli", out _));
     }

@@ -17,4 +17,6 @@ public interface IAuthenticatorUiPort
     Task<OperationResultVm> AddCredentialAsync(Guid accountId, string issuer, string label, string maskedOrDemoSeed, CancellationToken cancellationToken = default);
 
     Task<OperationResultVm> RemoveCredentialAsync(Guid credentialId, CancellationToken cancellationToken = default);
+
+    Task<OperationResultVm> RemoveAccountCredentialsAsync(Guid accountId, CancellationToken cancellationToken = default);
 }

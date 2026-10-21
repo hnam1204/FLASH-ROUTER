@@ -56,9 +56,10 @@ public sealed class EphemeralBrowserProfileFactory : IEphemeralBrowserProfileFac
             runtime.ExecutablePath ?? string.Empty,
             binding);
 
-        Func<ValueTask>? cleanup = sessionMode == BrowserSessionMode.Temporary
-            ? () => DeleteTemporaryProfileAsync(directory)
-            : null;
+        // The orchestrator retains this exact directory only for a bounded
+        // manual-continuation candidate or an approved promotion. All other
+        // terminal paths clean up only this generated profile directory.
+        Func<ValueTask> cleanup = () => DeleteTemporaryProfileAsync(directory);
         return new EphemeralBrowserProfilePreparationResult(
             true,
             "EphemeralBrowserProfileReady",

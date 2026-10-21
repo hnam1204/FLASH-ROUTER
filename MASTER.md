@@ -869,7 +869,7 @@ Các table còn lại được tạo trong migration theo ownership. Các enum s
 
 Ở thời điểm viết tài liệu, OpenAI có hướng dẫn cho open-source locally hosted apps: đăng ký host ID (`ext_agent_host_id`), flow OAuth PKCE, cấp issued client ID, validate identity, quản lý mỗi registration, refresh/revoke. Quyền identity (`openid profile email`) không bao gồm quyền đọc hội thoại. Quyền ChatGPT plan usage là **scope riêng** và áp dụng cho các tác vụ đủ điều kiện, không phải tài khoản API key/permission vô hạn.
 
-**Gate bắt buộc trước Phase OAuth:** kiểm tra lại docs, điều kiện app/host/callback/scopes, quy tắc branding và eligibility hiện tại; chứng minh end-to-end với **một tài khoản bạn sở hữu và chủ động consent**, không chạy bulk accounts. Nếu luồng SIWC không phù hợp với thiết kế hoặc không được cấp quyền, giữ tính năng `Open official login` và `Manual status`; không tạo “workaround” bằng cookie/private endpoint.
+**Gate bắt buộc trước Phase OAuth:** kiểm tra lại docs, điều kiện app/host/callback/scopes, quy tắc branding và eligibility hiện tại; chứng minh end-to-end với **một tài khoản bạn sở hữu và chủ động consent**, không chạy bulk accounts. Nếu luồng SIWC không phù hợp với thiết kế hoặc không được cấp quyền, giữ tính năng `Open official login` và `Manual status`; không mở rộng quyền hoặc tạo luồng xác thực thay thế. Ngoại lệ hẹp cho quota Codex CLI do người dùng yêu cầu được ghi tại mục 9.7.
 
 ### 9.2 Sequence chuẩn
 
@@ -927,6 +927,15 @@ sequenceDiagram
 ### 9.6 Điều khoản với ChatGPT plan usage
 
 Nếu phase tương lai muốn gửi request Responses API bằng permission SIWC, mở ADR mới về consent, separate scopes, streaming, limits, `store: false`, provider requirements và app-specific usage limits. **Không đưa inference gateway hoặc “unlimited quota” vào MVP.** Review [preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations), [errors/recovery](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery) trước khi code. Không tự động retry bằng account khác khi hết hạn mức.
+
+### 9.7 Quan sát quota Codex CLI theo yêu cầu người dùng
+
+- `CodexCliUsageRefreshService` là tích hợp cục bộ, chỉ đọc, chạy khi người dùng bấm cập nhật; không tự chạy lúc mở trang hoặc theo lịch.
+- Nguồn xác thực duy nhất là `CODEX_HOME/auth.json` hoặc `.codex/auth.json` của Windows user hiện tại. Access token chỉ tồn tại trong bộ nhớ của request và chỉ gửi tới `https://chatgpt.com/backend-api/wham/usage`; redirect bị chặn.
+- Chỉ giữ snapshot đã chuẩn hóa trong RAM. Không lưu token, refresh token, nội dung phản hồi thô, hoặc credential vào SQLite, log hay lịch sử hoạt động.
+- Trước khi hiện dữ liệu, email của phản hồi phải khớp email ChatGPT đã xác minh cho account đang chọn. Không khớp hoặc không có email thì từ chối gắn dữ liệu.
+- `/backend-api/wham/usage` là endpoint không có hợp đồng công khai trong nguồn người dùng cung cấp; đây không phải API được xác nhận hỗ trợ chính thức. Có thể đổi schema hoặc ngừng hoạt động. Lỗi giữ dữ liệu cũ ở trạng thái hiện tại và không tự chuyển qua tài khoản khác.
+- Đây là ngoại lệ giới hạn cho việc xem gói và cửa sổ quota; không cho phép inference, thay đổi auth.json, làm mới OAuth token, nhập nhiều account, hoặc tự động hóa đăng nhập Codex CLI.
 
 ---
 

@@ -56,6 +56,10 @@
     border-bottom: 1px solid var(--app-border);
 }
 
+.inspector-header .inspector-title {
+    overflow-wrap: anywhere;
+}
+
 .inspector-eyebrow {
     display: block;
     margin-bottom: 5px;
@@ -91,6 +95,7 @@
     display: flex;
     align-items: center;
     gap: 14px;
+    min-width: 0;
     padding: 16px;
     border: 1px solid var(--app-border);
     border-radius: var(--radius-lg);
@@ -214,6 +219,39 @@
     border-color: var(--accent-primary, #62b2ff);
 }
 
+.usage-widget-heading,
+.usage-brand,
+.codex-quota-label { display: flex; align-items: center; }
+.usage-widget-heading { justify-content: space-between; gap: 12px; }
+.usage-brand { gap: 10px; min-width: 0; }
+.usage-brand h3 { margin: 0; }
+.usage-identity, .usage-last-updated { color: var(--text-muted); font-size: 11px; }
+.usage-identity { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-plan-badge { padding: 4px 8px; border: 1px solid var(--app-border); border-radius: 999px; background: var(--app-surface-secondary); color: var(--text-secondary); font-size: 10px; font-weight: 750; }
+
+.btn-copy {
+    border-color: color-mix(in srgb, var(--accent-primary) 58%, var(--app-border));
+    background: color-mix(in srgb, var(--accent-primary) 13%, var(--app-surface));
+    color: var(--accent-primary);
+}
+
+.btn-copy:hover {
+    border-color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 20%, var(--app-surface));
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .section-heading {
     display: flex;
     align-items: baseline;
@@ -318,39 +356,17 @@
     text-align: right;
 }
 
-.usage-list {
-    display: grid;
-    gap: 8px;
-}
-
-.usage-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px;
-    border: 1px solid var(--app-border);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--app-surface) 80%, transparent);
-}
-
-.usage-row strong,
-.usage-row span,
-.usage-row small {
-    display: block;
-}
-
-.usage-row span,
-.usage-row small {
-    color: var(--text-muted);
-    font-size: 11px;
-}
-
-.usage-values {
-    text-align: right;
-    white-space: nowrap;
-}
-
+.codex-quota-list { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.codex-quota-row { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; }
+.codex-quota-label { justify-content: space-between; gap: 8px; }
+.codex-quota-label strong { color: var(--text-primary); font-size: 12px; font-weight: 650; }
+.codex-quota-label span, .codex-quota-row small { color: var(--text-muted); font-size: 11px; }
+.codex-quota-progress { grid-column: 1 / -1; height: 6px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--app-border) 80%, transparent); }
+.codex-quota-progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent-primary); transition: width 180ms ease; }
+.codex-quota-row small { grid-column: 1 / -1; }
+.usage-empty, .usage-refresh-status { margin-top: 12px; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
+.usage-refresh-status { color: var(--state-warning, #eab308); }
+.usage-last-updated { margin-top: 12px; }
 .state-danger {
     color: var(--state-danger, #ff7d8b);
     border-color: color-mix(in srgb, var(--state-danger, #ff7d8b) 40%, transparent);
@@ -423,7 +439,8 @@
     color: var(--text-primary);
     font-size: 12px;
     font-weight: 700;
-    white-space: nowrap;
+    line-height: 1.3;
+    text-align: center;
     cursor: pointer;
     transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
@@ -531,6 +548,11 @@
         flex-direction: column;
     }
 
+    .identity-email {
+        overflow-wrap: anywhere;
+        white-space: normal;
+    }
+
     .detail-grid,
     .actions-section {
         grid-template-columns: 1fr;
@@ -538,5 +560,25 @@
 
     .detail-item-wide {
         grid-column: auto;
+    }
+
+    .usage-widget-heading {
+        align-items: flex-start;
+    }
+
+    .usage-plan-badge {
+        flex: 0 0 auto;
+    }
+}
+
+@media (max-width: 360px) {
+    .inspector-header,
+    .inspector-body {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .actions-section {
+        grid-template-columns: 1fr;
     }
 }

@@ -126,6 +126,44 @@ public sealed class AuthenticationProjectionTests : IAsyncLifetime
         Assert.Equal(first.LastObservationAtUtc, second.LastObservationAtUtc);
     }
 
+    [Fact]
+    public async Task LateOlderAttemptCannotOverwriteNewerVerifiedAccountProjection()
+    {
+        var accountId = await CreateAccountAsync("projection-order@example.test");
+        var store = new SqliteAccountAuthenticationStateStore(_database.ContextFactory);
+        var olderAttempt = Guid.NewGuid();
+        var newerAttempt = Guid.NewGuid();
+        var newerAt = DateTimeOffset.UtcNow;
+
+        await store.RecordAsync(new AccountAuthenticationStateUpdate(
+            accountId,
+            newerAttempt,
+            "openai-chatgpt",
+            "AuthenticatedSessionConfirmed",
+            "IdentityVerified",
+            newerAt,
+            AuthenticatedSessionConfirmedAtUtc: newerAt,
+            IdentityVerifiedAtUtc: newerAt,
+            ObservedAtUtc: newerAt,
+            EvidenceSource: "synthetic matched account identity"));
+
+        await store.RecordAsync(new AccountAuthenticationStateUpdate(
+            accountId,
+            olderAttempt,
+            "openai-chatgpt",
+            "WaitingForUser",
+            "Unverified",
+            newerAt.AddMinutes(-1),
+            ObservedAtUtc: newerAt.AddSeconds(1),
+            EvidenceSource: "synthetic delayed old attempt"));
+
+        var result = await store.GetAsync(accountId);
+        Assert.NotNull(result);
+        Assert.Equal(newerAttempt, result!.AttemptId);
+        Assert.Equal("AuthenticatedSessionConfirmed", result.AuthenticationState);
+        Assert.Equal("IdentityVerified", result.IdentityVerificationState);
+    }
+
     private async Task<AccountDetailVm> ReadAccountAsync(Guid accountId)
     {
         await using var scope = _database.Services.CreateAsyncScope();

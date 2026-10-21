@@ -27,6 +27,71 @@
     margin-bottom: 16px;
 }
 
+.delete-backup-note {
+    margin: 12px 0 18px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.delete-confirm-label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 18px 0 8px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.delete-confirm-label strong {
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.delete-confirm-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--app-border-strong);
+    border-radius: var(--radius-md);
+    background: var(--app-surface-secondary);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.delete-confirm-input:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+.delete-confirm-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-top: 14px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.delete-confirm-checkbox input {
+    margin: 2px 0 0;
+    accent-color: var(--state-error);
+}
+
+.delete-error-message {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--state-error) 45%, transparent);
+    border-radius: var(--radius-md);
+    background: var(--state-error-bg);
+    color: var(--state-error);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
 .impact-notice-box {
     background: var(--app-surface-secondary);
     border: 1px solid var(--app-border);
@@ -61,4 +126,9 @@
 .flash-btn-danger:hover {
     background: #B91C1C;
     border-color: #B91C1C;
+}
+
+.flash-btn-danger:disabled {
+    opacity: .52;
+    cursor: not-allowed;
 }
